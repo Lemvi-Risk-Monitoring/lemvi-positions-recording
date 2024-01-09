@@ -8,4 +8,6 @@ SHELL ["/bin/bash", "--login", "-i", "-c"]
 
 RUN source ${HOME}/.bashrc && nvm install node
 
+RUN npm i -g serverless
+
 CMD [ "sleep", "infinity" ]

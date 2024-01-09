@@ -26,7 +26,6 @@ extra-doc-files:    CHANGELOG.md
 
 common shared
     build-depends: base >=4.7 && <5
-        , serverless-haskell
         , aeson
     ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -O2 -threaded -haddock
     default-language: Haskell2010
@@ -44,7 +43,7 @@ library
     hs-source-dirs:   src
     default-language: Haskell2010
 
-executable lemvi-positions-recording
+executable bootstrap
     import:           shared
     main-is:          Main.hs
 
@@ -56,6 +55,7 @@ executable lemvi-positions-recording
 
     hs-source-dirs:   app
     default-language: Haskell2010
+    build-depends: lemvi-positions-recording
 
 test-suite lemvi-positions-recording-test
     import:           shared

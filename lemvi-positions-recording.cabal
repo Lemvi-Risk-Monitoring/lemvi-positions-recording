@@ -27,6 +27,13 @@ extra-doc-files:    CHANGELOG.md
 common shared
     build-depends: base >=4.7 && <5
         , aeson
+        , aws-lambda-haskell-runtime >= 4.0.0
+        , aws-lambda-haskell-runtime-wai
+        , text
+        , servant
+        , servant-server
+        , wai
+        , mtl
     ghc-options:
         -Wall
         -Wcompat
@@ -45,7 +52,7 @@ common shared
 
 library
     import:           shared
-    exposed-modules:  MyLib
+    exposed-modules:  Lib
 
     -- Modules included in this library but not exported.
     -- other-modules:

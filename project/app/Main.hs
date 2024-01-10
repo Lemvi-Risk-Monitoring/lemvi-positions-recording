@@ -1,13 +1,18 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
+
 module Main (main) where
 
-import qualified Data.Aeson as Aeson
+import Aws.Lambda
+import Lib
+import qualified Lib
 
-import AWSLambda
+-- This tells the Lambda runtime how to initialize your application context.
+-- If you do not wish to use a shared context, you can just use Unit as the context value.
+-- E.g.
+-- initializeContext :: IO ()
+-- initializeContext = return ()
+initializeContext :: IO AppConfig
+initializeContext = Lib.initializeAppConfig
 
-main = lambdaMain handler
-
-handler :: Aeson.Value -> IO [Int]
-handler evt = do
-  putStrLn "This should go to logs"
-  print evt
-  pure [1, 2, 3]
+generateLambdaDispatcher UseWithAPIGateway defaultDispatcherOptions

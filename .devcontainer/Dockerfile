@@ -11,6 +11,7 @@ ARG USER_GID=$USER_UID
 
 RUN \
     dnf install --assumeyes findutils \
+        cmake \
         gcc \
         g++ \
         gmp-devel \

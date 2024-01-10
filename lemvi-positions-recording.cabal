@@ -28,7 +28,6 @@ common shared
     build-depends: base >=4.7 && <5
         , aeson
         , aws-lambda-haskell-runtime >= 4.0.0
-        , aws-lambda-haskell-runtime-wai
         , text
         , servant
         , servant-server

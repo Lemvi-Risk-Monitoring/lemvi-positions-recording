@@ -13,12 +13,13 @@ RUN \
     dnf install --assumeyes findutils \
         gcc \
         g++ \
+        gmp-devel \
         vim \
         sudo \
         git
 
 RUN \
-    curl ${GHCUP_DWN_URL} > /usr/bin/ghcup && \
+    /usr/bin/curl ${GHCUP_DWN_URL} > /usr/bin/ghcup && \
     chmod +x /usr/bin/ghcup
 
 # Creating the workspace user
@@ -28,12 +29,16 @@ RUN /usr/sbin/groupadd --gid ${USER_GID} ${USER_NAME} \
     && chmod 0440 /etc/sudoers.d/${USER_NAME}
 
 # Maybe overkill - TODO: try to remove
-RUN /usr/sbin/groupadd docker && \
-    /usr/sbin/usermod -aG docker ${USER_NAME}
+# RUN /usr/sbin/groupadd docker && \
+#     /usr/sbin/usermod -aG docker ${USER_NAME}
 
 USER ${USER_NAME}
 
 WORKDIR /home/${USER_NAME}
+
+RUN /usr/bin/curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
 
 # install GHC, cabal and stack
 RUN \

@@ -1,8 +1,13 @@
 module Main (main) where
 
-import qualified MyLib (someFunc)
+import qualified Data.Aeson as Aeson
 
-main :: IO ()
-main = do
-  putStrLn "Hello, Haskell!"
-  MyLib.someFunc
+import AWSLambda
+
+main = lambdaMain handler
+
+handler :: Aeson.Value -> IO [Int]
+handler evt = do
+  putStrLn "This should go to logs"
+  print evt
+  pure [1, 2, 3]

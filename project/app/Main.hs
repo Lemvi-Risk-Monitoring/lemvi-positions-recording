@@ -13,5 +13,6 @@ main =
   runLambdaHaskellRuntime
     defaultDispatcherOptions
     (pure ())
-    id
-    (addStandaloneLambdaHandler (HandlerName (T.pack "handler")) Lib.handler)
+    id $ do
+      -- You could also register multiple handlers
+      addStandaloneLambdaHandler (HandlerName $ T.pack "handler") Lib.handler

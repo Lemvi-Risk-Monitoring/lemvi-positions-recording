@@ -1,17 +1,14 @@
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeOperators       #-}
 
 module Lib where
 
-import GHC.Generics
-import Data.Aeson
-import Aws.Lambda
+import GHC.Generics ( Generic )
+import Data.Aeson ( FromJSON, ToJSON )
+import Aws.Lambda ( Context )
 
 data Person = Person
   { personName :: String
@@ -22,7 +19,7 @@ instance FromJSON Person
 instance ToJSON Person
 
 handler :: Person -> Context () -> IO (Either String Person)
-handler person context =
+handler person _ =
   if personAge person > 0 then
     return (Right person)
   else

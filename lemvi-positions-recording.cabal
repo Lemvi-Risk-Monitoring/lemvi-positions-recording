@@ -45,15 +45,15 @@ common shared
         -Wredundant-constraints
         -O2
         -threaded
-        -static
+--        -static
         -haddock
-    cc-options: -static
-    ld-options: -static -pthread
+--    cc-options: -static
+--    ld-options: -static -pthread
     default-language: Haskell2010
 
 library
     import:           shared
-    exposed-modules:  Lib
+    exposed-modules:  Services
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -64,7 +64,7 @@ library
     hs-source-dirs:   project/src
     default-language: Haskell2010
 
-executable lemvi-positions-recording
+executable aws-app
     import:           shared
     main-is:          Main.hs
 
@@ -74,7 +74,7 @@ executable lemvi-positions-recording
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
 
-    hs-source-dirs:   project/app
+    hs-source-dirs:   project/aws-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
         , warp

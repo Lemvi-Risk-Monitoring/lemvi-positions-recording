@@ -14,7 +14,7 @@ AWS_LAMBDA_FUNC_NAME=hal-example-2
 ### Creating a zip containing a bootstrap executable
 Rename executable to `bootstrap` and add it to a zip file `bootstrap.zip`:
 ```shell
-cp dist-newstyle/build/x86_64-linux/ghc-9.4.8/lemvi-positions-recording-0.1.0.0/x/lemvi-positions-recording/build/lemvi-positions-recording/lemvi-positions-recording /tmp/bootstrap
+cp dist-newstyle/build/x86_64-linux/ghc-9.4.8/lemvi-positions-recording-0.1.0.0/x/aws-app/build/aws-app/aws-app /tmp/bootstrap
 zip -j /tmp/bootstrap.zip /tmp/bootstrap
 ```
 
@@ -23,6 +23,7 @@ zip -j /tmp/bootstrap.zip /tmp/bootstrap
 ```shell
 EXEC_ROLE_ARN=$(aws iam create-role --role-name lambda-exec --assume-role-policy-document '{"Version": "2012-10-17","Statement": [{ "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}' | jq -r '.Role.Arn')
 aws iam attach-role-policy --role-name lambda-exec --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
 API_GATEWAY_ROLE_ARN=$(aws iam create-role --role-name api-gateway --assume-role-policy-document '{"Version": "2012-10-17","Statement": [{ "Effect": "Allow", "Principal": {"Service": "apigateway.amazonaws.com"}, "Action": "sts:AssumeRole"}]}' | jq -r '.Role.Arn')
 aws iam put-role-policy --role-name api-gateway --policy-name LambdaInvokePolicy --policy-document '{
         "Version": "2012-10-17",
@@ -49,6 +50,12 @@ aws apigateway put-method --rest-api-id ${REST_API_ID} \
        --authorization-type NONE \
        --region ${AWS_REGION}
 
+aws apigateway put-method-response --rest-api-id ${REST_API_ID} \
+      --resource-id ${RESOURCE_ID} \
+      --http-method ANY \
+      --status-code 200 \
+      --response-models '{"application/json": "Empty" }'
+
 aws apigateway put-integration --rest-api-id ${REST_API_ID} \
       --region ${AWS_REGION} \
       --resource-id ${RESOURCE_ID} \
@@ -57,11 +64,7 @@ aws apigateway put-integration --rest-api-id ${REST_API_ID} \
       --integration-http-method POST \
       --uri "arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/${FUNCTION_ARN}/invocations"
 
-aws apigateway put-method-response --rest-api-id ${REST_API_ID} \
-      --resource-id ${RESOURCE_ID} \
-      --http-method ANY \
-      --status-code 200 \
-      --response-models '{"application/json": "Empty" }'
+#       --credentials ${API_GATEWAY_ROLE_ARN}
 
 aws apigateway create-deployment --rest-api-id ${REST_API_ID} --stage-name test --region ${AWS_REGION} 
 ```

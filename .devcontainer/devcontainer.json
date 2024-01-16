@@ -5,7 +5,9 @@
 			"extensions": [
 				"haskell.haskell",
 				"ms-azuretools.vscode-docker",
-				"mark-tucker.aws-cli-configure"
+				"mark-tucker.aws-cli-configure",
+				"yzhang.markdown-all-in-one",
+				"hashicorp.terraform"
 			]
 		}
 	}
@@ -13,5 +15,5 @@
 	, "mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/haskell/.ssh,type=bind,readonly"
 	]
-	, "postStartCommand": "cabal update"
+	, "postStartCommand": "cabal update && terraform init"
 }

@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Lib (app) where
+module Services (app) where
 
 import Data.Aeson (ToJSON (..), object, (.=))
 import Data.Proxy (Proxy (..))

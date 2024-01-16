@@ -24,3 +24,6 @@ cabal.project.local~
 node_modules/
 .serverless/
 *.log
+*.backup
+.terraform
+*.tfstate

@@ -8,14 +8,31 @@ variable "aws_region" {
   default = "us-east-1"
 }
 
+provider "aws" {
+  region = var.aws_region
+}
+
+locals {
+    lambda_exe = "${path.module}/dist-newstyle/build/x86_64-linux/ghc-9.4.8/lemvi-positions-recording-0.1.0.0/x/aws-app/build/aws-app/aws-app"
+}
+
+resource "null_resource" "copy_file" {
+  provisioner "local-exec" {
+    command = "cp ${local.lambda_exe} /tmp/bootstrap"
+  }
+}
+
 data "archive_file" "lambda_package" {
-  type = "zip"
-  source_file = "./dist-newstyle/build/x86_64-linux/ghc-9.4.8/lemvi-positions-recording-0.1.0.0/x/aws-app/build/aws-app/aws-app"
+  type        = "zip"
   output_path = "/tmp/bootstrap.zip"
+  source_file = "/tmp/bootstrap"
+  depends_on = [
+    resource.null_resource.copy_file
+  ]
 }
 
 resource "aws_lambda_function" "hal_lambda" {
-  filename = "/tmp/bootstrap.zip"
+  filename = data.archive_file.lambda_package.output_path
   function_name = var.function_name
   role = aws_iam_role.lambda_role.arn
   handler = "handler"

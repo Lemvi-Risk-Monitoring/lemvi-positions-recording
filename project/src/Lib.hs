@@ -1,26 +1,42 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
-module Lib where
+module Lib (app) where
 
-import GHC.Generics ( Generic )
-import Data.Aeson ( FromJSON, ToJSON )
-import Aws.Lambda ( Context )
+import Data.Aeson (ToJSON (..), object, (.=))
+import Data.Proxy (Proxy (..))
+import Data.Text (Text)
+import Servant.API
+    ( type (:<|>)(..),
+      JSON,
+      Required,
+      Strict,
+      QueryParam',
+      type (:>),
+      Get )
+import Servant.Server (Application, Server, serve)
 
-data Person = Person
-  { personName :: String
-  , personAge :: Int
-  } deriving (Generic)
+type Api = Greet :<|> Hoot
 
-instance FromJSON Person
-instance ToJSON Person
+type Greet =
+  "greet"
+    :> QueryParam' '[Required, Strict] "person" Text
+    :> Get '[JSON] Message
 
-handler :: Person -> Context () -> IO (Either String Person)
-handler person _ =
-  if personAge person > 0 then
-    return (Right person)
-  else
-    return (Left "A person's age must be positive")
+type Hoot = "hoot" :> Get '[JSON] Message
+
+greet :: Server Greet
+greet person = pure . Message $ "Hello, " <> person <> "!"
+
+hoot :: Server Hoot
+hoot = pure $ Message "Hoot!"
+
+newtype Message = Message Text
+
+instance ToJSON Message where
+  toJSON (Message t) = object ["message" .= t]
+
+app :: Application
+app = serve (Proxy @Api) $ greet :<|> hoot

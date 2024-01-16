@@ -1,15 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Main (main) where
 
-import Aws.Lambda
+import AWS.Lambda.Runtime (mRuntime)
 import qualified Lib
+import qualified Network.Wai.Handler.Hal as WaiHandler
 
 main :: IO ()
-main =
-  runLambdaHaskellRuntime
-    defaultDispatcherOptions
-    (pure ())
-    id $ do
-      -- You could also register multiple handlers
-      addStandaloneLambdaHandler "handler" Lib.handler
+main = mRuntime $ WaiHandler.run Lib.app

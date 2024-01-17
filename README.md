@@ -3,7 +3,9 @@ Gathering positions from various exchanges
 
 ## Deploying to AWS Custom Lambda
 
-### Basic setup
+The deployment is performed with terraform.
+
+### Basic setup
 
 ```shell
 aws configure

@@ -16,7 +16,7 @@ export TF_VAR_aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')
 ### Function deployment
 
 ```shell
-terraform apply
+terraform -chdir=terraform apply
 ```
 
 ## Testing deployment

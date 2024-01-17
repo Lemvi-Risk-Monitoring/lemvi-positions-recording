@@ -7,7 +7,8 @@
 				"ms-azuretools.vscode-docker",
 				"mark-tucker.aws-cli-configure",
 				"yzhang.markdown-all-in-one",
-				"hashicorp.terraform"
+				"hashicorp.terraform",
+				"DavidAnson.vscode-markdownlint"
 			]
 		}
 	}

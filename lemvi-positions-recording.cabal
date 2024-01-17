@@ -31,9 +31,9 @@ common shared
         , hal
         , warp
         , http-conduit
-        , hxt
         , bytestring
         , containers
+        , xml
     ghc-options:
         -Wall
         -Wcompat

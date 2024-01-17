@@ -7,7 +7,9 @@
 				"ms-azuretools.vscode-docker",
 				"mark-tucker.aws-cli-configure",
 				"yzhang.markdown-all-in-one",
-				"hashicorp.terraform"
+				"hashicorp.terraform",
+				"DavidAnson.vscode-markdownlint",
+				"shd101wyy.markdown-preview-enhanced"
 			]
 		}
 	}
@@ -15,5 +17,5 @@
 	, "mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/haskell/.ssh,type=bind,readonly"
 	]
-	, "postStartCommand": "cabal update && terraform init"
+	, "postStartCommand": "cabal update && terraform -chdir=terraform init"
 }

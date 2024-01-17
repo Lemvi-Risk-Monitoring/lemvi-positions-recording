@@ -40,21 +40,23 @@ resource "aws_lambda_function" "hal_lambda" {
   source_code_hash = data.archive_file.lambda_package.output_base64sha256
 }
 
+# IAM
+data "aws_iam_policy_document" "assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
 resource "aws_iam_role" "lambda_role" {
   name = "lambda-exec"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-        {
-            Action = "sts:AssumeRole",
-            Effect = "Allow",
-            Principal = {
-                Service = "lambda.amazonaws.com"
-            }
-        }
-    ]
-    })
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_api_gateway_rest_api" "hal_api" {
@@ -64,6 +66,14 @@ resource "aws_api_gateway_rest_api" "hal_api" {
   endpoint_configuration {
     types = ["REGIONAL"]
   }
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.hal_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn = "${aws_api_gateway_rest_api.hal_api.execution_arn}/*/${aws_api_gateway_method.proxy.http_method}${aws_api_gateway_resource.root.path}"
 }
 
 resource "aws_api_gateway_resource" "root" {

@@ -7,8 +7,10 @@ Gathering positions from various exchanges
 
 ```shell
 aws configure
-AWS_REGION=us-east-1
-AWS_LAMBDA_FUNC_NAME=hal-example-2
+export TF_VAR_aws_lambda_function_name=hal-example-2
+export TF_VAR_aws_stage=test
+export TF_VAR_aws_region=$(aws configure get region)
+export TF_VAR_aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')
 ```
 
 ### Function deployment

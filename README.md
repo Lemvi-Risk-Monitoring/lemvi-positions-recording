@@ -46,3 +46,13 @@ aws apigateway test-invoke-method \
 ```
 
 ### Testing locally
+
+Starting the Warp server:
+
+```shell
+cabal run local-app
+```
+
+```shell
+curl 127.0.0.1:8080/greet?person=John
+```

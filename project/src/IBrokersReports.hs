@@ -1,35 +1,56 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE Arrows #-}
 
-module IBrokersReports (loadIBRecords) where
+module IBrokersReports (loadIBRecords, checkReportError) where
 
 import Network.HTTP.Simple
-import Control.Monad
-import Text.XML.HXT.Core hiding (getQName)
+    ( parseRequest, getResponseBody, httpBS )
 
-import qualified Text.XML.HXT.DOM.QualifiedName as QN
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.Map as MAP
+import Text.Read (readMaybe)
+import Control.Arrow.ListArrow (runLA)
+import Text.XML.HXT.Core (XmlTree, ArrowXml (hasName, getText), 
+    ArrowTree ((/>), deep, (//>)), 
+    readString, withValidate, no, runX, (>>>), 
+    isElem, withParseHTML, withWarnings)
+import Data.Maybe (listToMaybe)
 
-data RowData = RowData (MAP.Map String String) deriving (Show, Eq)
-
-loadIBRecords :: String -> String -> IO [XmlTree]
+loadIBRecords :: String -> String -> IO (Maybe XmlTree)
 loadIBRecords ib_token ib_query_id = do
-    let ib_flex_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest?t=" ++ ib_token ++ "&q=" ++ ib_query_id ++ "&v=3"
+    let ibFlexUrl = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest?t=" ++ ib_token ++ "&q=" ++ ib_query_id ++ "&v=3"
 
-    request <- parseRequest ib_flex_url
-    ib_response <- httpBS request
+    request <- parseRequest ibFlexUrl
+    ibResponse <- httpBS request
 
-    let ib_report_location = readString [withValidate no] (BS.unpack (getResponseBody ib_response))
+    let ibReportLocation = readString [withValidate no] (BS.unpack (getResponseBody ibResponse))
 
-    ib_report_reference_code <- runX (ib_report_location >>> deep (isElem >>> hasName "ReferenceCode") //> getText)
-    ib_report_base_url <- runX (ib_report_location >>> deep (isElem >>> hasName "Url") //> getText)
+    ibReportReferencCode <- runX (ibReportLocation >>> deep (isElem >>> hasName "ReferenceCode") //> getText)
+    ibReportBaseUrl <- runX (ibReportLocation >>> deep (isElem >>> hasName "Url") //> getText)
 
-    let ib_report_url  = head ib_report_base_url ++ "?t=" ++ ib_token ++ "&q=" ++ head ib_report_reference_code ++ "&v=3"
+    let ib_report_url  = head ibReportBaseUrl ++ "?t=" ++ ib_token ++ "&q=" ++ head ibReportReferencCode ++ "&v=3"
     reportRequest <- parseRequest ib_report_url
-    ib_report <- httpBS reportRequest
+    ibReport <- httpBS reportRequest
 
-    let ib_report_content = readString [withValidate no] (BS.unpack (getResponseBody ib_report))
+    let reportText = BS.unpack (getResponseBody ibReport) :: String
 
-    ib_records <- runX $ ib_report_content
-    return ib_records
+    let ibReportContent = readString [withValidate no, withParseHTML no, withWarnings no] reportText
+
+    trees <- runX ibReportContent
+    case trees of
+        [] -> return Nothing
+        tree:_ -> return $ Just tree
+
+type ErrorCode = Int
+type ErrorMessage = String
+
+getErrorCodeText :: (ArrowXml a) => a XmlTree String
+getErrorCodeText = hasName "ErrorCode" /> getText
+
+getErrorMessageText :: (ArrowXml a) => a XmlTree String
+getErrorMessageText = hasName "ErrorMessage" /> getText
+
+checkReportError :: XmlTree -> Maybe (ErrorCode, ErrorMessage)
+checkReportError xmlTree = do
+  errorCodeStr <- listToMaybe . runLA getErrorCodeText $ xmlTree
+  errorMessage <- listToMaybe . runLA getErrorMessageText $ xmlTree
+  errorCode <- readMaybe errorCodeStr
+  return (errorCode, errorMessage)

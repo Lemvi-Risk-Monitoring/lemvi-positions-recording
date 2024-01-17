@@ -41,7 +41,7 @@ resource "aws_lambda_function" "hal_lambda" {
 }
 
 # IAM
-data "aws_iam_policy_document" "assume_role" {
+data "aws_iam_policy_document" "assume_role_lambda" {
   statement {
     effect = "Allow"
 
@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "assume_role" {
 
 resource "aws_iam_role" "lambda_role" {
   name = "lambda-exec"
-  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.assume_role_lambda.json
 }
 
 resource "aws_api_gateway_rest_api" "hal_api" {
@@ -73,7 +73,10 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.hal_lambda.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn = "${aws_api_gateway_rest_api.hal_api.execution_arn}/*/${aws_api_gateway_method.proxy.http_method}${aws_api_gateway_resource.root.path}"
+  # DANGER ZONE: USE FULL * permissions, otherwise getting error
+  # "Execution failed due to configuration error: Invalid permissions on Lambda function"
+  source_arn = "${aws_api_gateway_rest_api.hal_api.execution_arn}/*/*"
+  #source_arn = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:${aws_api_gateway_rest_api.hal_api.id}/*/*" 
 }
 
 resource "aws_api_gateway_resource" "root" {

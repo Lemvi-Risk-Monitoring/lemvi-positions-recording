@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module IBrokersReports (loadIBRecords, checkReportError, makeIBRecords, RowData) where
 
@@ -14,9 +13,10 @@ import Text.XML.Light
       Attr(Attr),
       Element(elAttribs),
       QName(qName), parseXMLDoc, strContent, findElement )
-import Data.Aeson (ToJSON, encode)
-import GHC.Generics
+import Data.Aeson (encode)
+
 import Data.ByteString.Lazy (ByteString)
+import Data.Map.Strict (fromList)
 
 loadIBRecords :: String -> String -> IO (Maybe Element)
 loadIBRecords ib_token ib_query_id = do
@@ -64,11 +64,9 @@ checkReportError tree = case (findErrorCode tree, findErrorMessage tree) of
 
 type FieldName = String
 type FieldValue = String
-newtype RowData = RowData [(FieldName, FieldValue)] deriving (Show, Generic)
-
-instance ToJSON RowData
+type RowData = [(FieldName, FieldValue)]
 
 makeIBRecords :: Element -> ByteString
-makeIBRecords reportTree = encode [RowData (attrToPair a) | a <- findElements (unqual "OpenPosition") reportTree]
+makeIBRecords reportTree = encode [fromList (attrToPair a) | a <- findElements (unqual "OpenPosition") reportTree]
    where
        attrToPair e = [(qName n, v) | Attr n v <- elAttribs e]

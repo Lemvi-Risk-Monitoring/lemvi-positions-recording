@@ -32,6 +32,16 @@
       "type": "shell",
       "label": "haskell test",
       "command": "cabal test"
+    },
+    {
+      "label": "Start Warp Server",
+      "type": "shell",
+      "command": "cabal",
+      "args": ["run", "local-app"],
+      "group": {
+        "kind": "none",
+        "isDefault": true
+      }
     }
   ]
 }

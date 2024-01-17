@@ -21,9 +21,6 @@ category:           AWS
 build-type:         Simple
 extra-doc-files:    CHANGELOG.md
 
--- Extra source files to be distributed with the package, such as examples, or a tutorial module.
--- extra-source-files:
-
 common shared
     build-depends: base >=4.7 && <5
         , aeson
@@ -33,6 +30,10 @@ common shared
         , text
         , hal
         , warp
+        , http-conduit
+        , hxt
+        , bytestring
+        , containers
     ghc-options:
         -Wall
         -Wcompat
@@ -45,21 +46,13 @@ common shared
         -Wredundant-constraints
         -O2
         -threaded
---        -static
         -haddock
---    cc-options: -static
---    ld-options: -static -pthread
     default-language: Haskell2010
 
 library
     import:           shared
-    exposed-modules:  Services
-
-    -- Modules included in this library but not exported.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+    exposed-modules: Services
+        , IBrokersReports
 
     hs-source-dirs:   project/src
     default-language: Haskell2010
@@ -67,13 +60,6 @@ library
 executable aws-app
     import:           shared
     main-is:          Main.hs
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-
     hs-source-dirs:   project/aws-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
@@ -82,28 +68,20 @@ executable aws-app
 executable local-app
     import:           shared
     main-is:          Main.hs
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-
     hs-source-dirs:   project/local-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
 
+executable ibrokers-app
+    import:           shared
+    main-is:          Main.hs
+    hs-source-dirs:   project/ibrokers-app
+    default-language: Haskell2010
+    build-depends: lemvi-positions-recording
 
 test-suite lemvi-positions-recording-test
     import:           shared
     default-language: Haskell2010
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-
     type:             exitcode-stdio-1.0
     hs-source-dirs:   project/test
     main-is:          Spec.hs

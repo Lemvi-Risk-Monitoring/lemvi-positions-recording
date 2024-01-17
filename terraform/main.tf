@@ -20,7 +20,7 @@ locals {
 
 resource null_resource copy_file {
   provisioner "local-exec" {
-    command = "cp ${local.lambda_exe} /tmp/bootstrap"
+    command = "cp ${local.lambda_exe} /tmp/bootstrap && strip /tmp/bootstrap"
   }
 }
 

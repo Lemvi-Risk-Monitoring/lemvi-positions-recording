@@ -1,11 +1,7 @@
-variable "lambda_exe_path" {
+variable "exe_path" {
   type = string
 }
 
-variable "lambda_dir_name" {
-  type = string
-}
-
-variable "aws_lambda_function_name" {
+variable "function_name" {
   type = string
 }

@@ -1,13 +1,13 @@
 resource "null_resource" "prepare_bootstrap" {
   provisioner "local-exec" {
-    command = "mkdir -p /tmp/${var.lambda_dir_name} && cp ${var.lambda_exe_path} /tmp/${var.lambda_dir_name}/bootstrap && strip /tmp/${var.lambda_dir_name}/bootstrap"
+    command = "mkdir -p /tmp/${var.function_name} && cp ${var.exe_path} /tmp/${var.function_name}/bootstrap && strip /tmp/${var.function_name}/bootstrap"
   }
 }
 
 data "archive_file" "lambda_package" {
   type        = "zip"
-  output_path = "/tmp/bootstrap-${var.lambda_dir_name}.zip"
-  source_file = "/tmp/${var.lambda_dir_name}/bootstrap"
+  output_path = "/tmp/bootstrap-${var.function_name}.zip"
+  source_file = "/tmp/${var.function_name}/bootstrap"
 
   depends_on = [
     resource.null_resource.prepare_bootstrap
@@ -16,7 +16,7 @@ data "archive_file" "lambda_package" {
 
 resource "aws_lambda_function" "lambda_function" {
   filename         = data.archive_file.lambda_package.output_path
-  function_name    = var.aws_lambda_function_name
+  function_name    = var.function_name
   role             = aws_iam_role.lambda_role.arn
   handler          = "handler"
   runtime          = "provided.al2023"
@@ -38,7 +38,7 @@ data "aws_iam_policy_document" "assume_role_lambda" {
 }
 
 resource "aws_iam_role" "lambda_role" {
-  name               = "lambda-exec-${var.aws_lambda_function_name}"
+  name               = "lambda-exec-${var.function_name}"
   assume_role_policy = data.aws_iam_policy_document.assume_role_lambda.json
 }
 

@@ -12,7 +12,6 @@ locals {
 module "lambda_function" {
   source = "./aws-lambda"
 
-  lambda_dir_name = local.lambda_dir_name
-  lambda_exe_path = local.lambda_exe_path
-  aws_lambda_function_name = var.aws_lambda_function_name
+  exe_path = local.lambda_exe_path
+  function_name = var.aws_lambda_function_name
 }

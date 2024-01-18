@@ -5,7 +5,7 @@ locals {
 }
 
 resource "aws_api_gateway_rest_api" "rest_api" {
-  name        = "api-lambda-${aws_lambda_function.lambda_function.function_name}"
+  name        = "api-lambda-${module.lambda_function.name}"
   description = local.api_description
 
   endpoint_configuration {
@@ -16,7 +16,7 @@ resource "aws_api_gateway_rest_api" "rest_api" {
 resource "aws_lambda_permission" "api_gateway_invoke" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_function.function_name
+  function_name = module.lambda_function.name
   principal     = "apigateway.amazonaws.com"
   # DANGER ZONE: USE FULL * permissions, otherwise getting error
   # "Execution failed due to configuration error: Invalid permissions on Lambda function"
@@ -41,7 +41,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.rest_api.id
   resource_id             = aws_api_gateway_resource.root.id
   http_method             = aws_api_gateway_method.proxy.http_method
-  uri                     = aws_lambda_function.lambda_function.invoke_arn
+  uri                     = module.lambda_function.invoke_arn
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
 }

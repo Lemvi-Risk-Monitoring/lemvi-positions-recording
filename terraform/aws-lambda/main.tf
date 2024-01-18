@@ -1,20 +1,13 @@
-locals {
-  project_name_version = "lemvi-positions-recording-0.1.0.0"
-  lambda_dir_name      = "aws-app"
-  dist_path            = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
-  lambda_exe           = "${path.cwd}/${local.dist_path}/${local.project_name_version}/x/${local.lambda_dir_name}/build/${local.lambda_dir_name}/${local.lambda_dir_name}"
-}
-
 resource "null_resource" "prepare_bootstrap" {
   provisioner "local-exec" {
-    command = "mkdir -p /tmp/${local.lambda_dir_name} && cp ${local.lambda_exe} /tmp/${local.lambda_dir_name}/bootstrap && strip /tmp/${local.lambda_dir_name}/bootstrap"
+    command = "mkdir -p /tmp/${var.lambda_dir_name} && cp ${var.lambda_exe_path} /tmp/${var.lambda_dir_name}/bootstrap && strip /tmp/${var.lambda_dir_name}/bootstrap"
   }
 }
 
 data "archive_file" "lambda_package" {
   type        = "zip"
-  output_path = "/tmp/bootstrap-${local.lambda_dir_name}.zip"
-  source_file = "/tmp/${local.lambda_dir_name}/bootstrap"
+  output_path = "/tmp/bootstrap-${var.lambda_dir_name}.zip"
+  source_file = "/tmp/${var.lambda_dir_name}/bootstrap"
 
   depends_on = [
     resource.null_resource.prepare_bootstrap
@@ -45,7 +38,7 @@ data "aws_iam_policy_document" "assume_role_lambda" {
 }
 
 resource "aws_iam_role" "lambda_role" {
-  name               = "lambda-exec"
+  name               = "lambda-exec-${var.aws_lambda_function_name}"
   assume_role_policy = data.aws_iam_policy_document.assume_role_lambda.json
 }
 

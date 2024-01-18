@@ -5,7 +5,7 @@ locals {
 }
 
 resource "aws_api_gateway_rest_api" "rest_api" {
-  name        = "api-lambda-${var.aws_lambda_function_name}"
+  name        = "api-lambda-${aws_lambda_function.lambda_function.function_name}"
   description = local.api_description
 
   endpoint_configuration {

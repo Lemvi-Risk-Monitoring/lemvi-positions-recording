@@ -1,13 +1,17 @@
+locals {
+  deployment_staging = ".deploy"
+}
+
 resource "null_resource" "prepare_bootstrap" {
   provisioner "local-exec" {
-    command = "mkdir -p /tmp/${var.function_name} && cp ${var.exe_path} /tmp/${var.function_name}/bootstrap && strip /tmp/${var.function_name}/bootstrap"
+    command = "mkdir -p ${local.deployment_staging}/${var.function_name} && cp ${var.exe_path} ${local.deployment_staging}/${var.function_name}/bootstrap && strip ${local.deployment_staging}/${var.function_name}/bootstrap"
   }
 }
 
 data "archive_file" "lambda_package" {
   type        = "zip"
-  output_path = "/tmp/bootstrap-${var.function_name}.zip"
-  source_file = "/tmp/${var.function_name}/bootstrap"
+  output_path = "${local.deployment_staging}/bootstrap-${var.function_name}.zip"
+  source_file = "${local.deployment_staging}/${var.function_name}/bootstrap"
 
   depends_on = [
     resource.null_resource.prepare_bootstrap

@@ -6,20 +6,32 @@ Gathering positions from various exchanges
 
 The deployment is performed with `terraform`.
 
+The follwing environment variables can be defined within the GitHub repository secrets:
+
+- AWS_ACCESS_KEY_ID
+- AWS_DEFAULT_REGION
+- AWS_SECRET_ACCESS_KEY
+- DERIBIT_CLIENT_ID
+- DERIBIT_CLIENT_SECRET
+- IB_FLEX_QUERY_ID
+- IB_FLEX_REPORT_TOKEN
+
 ### Basic setup
 
-The access and secret keys are generated from the AWS account (top left, ""Security credentials" and then "Create access key").
+The access and secret keys are generated from the AWS account (top left, "Security credentials" and then "Create access key").
 
-```shell
-aws configure
-```
-
-Environment variables for `terraform` are set by calling a script at the end of the Dockerfile:
+Environment variables for `terraform`:
 
 ```shell
 export TF_VAR_aws_stage=test
 export TF_VAR_aws_region=$(aws configure get region)
 export TF_VAR_aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')
+```
+
+AWS settings can be overriden using:
+
+```shell
+aws configure
 ```
 
 ### Building

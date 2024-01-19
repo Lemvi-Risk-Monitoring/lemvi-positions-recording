@@ -29,3 +29,4 @@ node_modules/
 *.tfstate
 .terraform.*.info
 out.json
+.deploy

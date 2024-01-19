@@ -3,7 +3,7 @@
 module IBrokersReports (loadIBFlexReport, loadIBRecords, checkReportError, makeIBRecords, fetchFlexReport, RowData) where
 
 import Network.HTTP.Simple
-    ( parseRequest, getResponseBody, httpBS )
+    ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 
 import qualified Data.ByteString.Char8 as BS
 
@@ -19,13 +19,14 @@ import Data.Aeson.Text (encodeToLazyText)
 import Data.Text.Lazy (Text, pack)
 import Control.Exception (throw, Exception)
 import Data.Data (Typeable)
+import Network.HTTP.Conduit ( responseTimeoutMicro )
 
 loadIBFlexReport :: String -> String -> String -> IO (Maybe String)
 loadIBFlexReport ibFlexURL ibToken ibQueryId = do
     let ibFlexUrl = ibFlexURL ++ "?t=" ++ ibToken ++ "&q=" ++ ibQueryId ++ "&v=3"
-
     request <- parseRequest ibFlexUrl
-    ibResponse <- httpBS request
+    let request' = setRequestResponseTimeout (responseTimeoutMicro 120000000) request 
+    ibResponse <- httpBS request'
 
     let ibReportLocation = parseXMLDoc $ BS.unpack (getResponseBody ibResponse)
         ibReportReferenceCode = findReferenceCode ibReportLocation

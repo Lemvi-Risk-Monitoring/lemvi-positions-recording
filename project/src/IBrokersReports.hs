@@ -23,8 +23,8 @@ import Network.HTTP.Conduit ( responseTimeoutMicro )
 
 loadIBFlexReport :: String -> String -> String -> IO (Maybe String)
 loadIBFlexReport ibFlexURL ibToken ibQueryId = do
-    let ibFlexUrl = ibFlexURL ++ "?t=" ++ ibToken ++ "&q=" ++ ibQueryId ++ "&v=3"
-    request <- parseRequest ibFlexUrl
+    let ibFlexURL' = ibFlexURL ++ "?t=" ++ ibToken ++ "&q=" ++ ibQueryId ++ "&v=3"
+    request <- parseRequest ibFlexURL'
     let request' = setRequestResponseTimeout (responseTimeoutMicro 120000000) request 
     ibResponse <- httpBS request'
 
@@ -84,16 +84,14 @@ data IBrokersException
 
 instance Exception IBrokersException
 
-fetchFlexReport :: String -> Maybe String -> Maybe String -> IO Element
-fetchFlexReport ibFlexURL flexQueryId flexReportToken = case (flexQueryId, flexReportToken) of
-        (Just qId, Just token) -> do
-            maybeTree <- loadIBRecords ibFlexURL token qId
+fetchFlexReport :: String -> String -> Maybe String -> IO Element
+fetchFlexReport ibFlexURL flexQueryId flexReportToken = case flexReportToken of
+        Just token -> do
+            maybeTree <- loadIBRecords ibFlexURL token flexQueryId
             case maybeTree of
                 Just tree -> case checkReportError tree of
                     Just (errorCode, errorMessage) -> throw (ReportServerError (pack msg))
                         where msg = "report not ready: " ++ errorMessage ++ " (code " ++ show errorCode ++ ")"
                     Nothing -> return tree
                 Nothing -> throw (LoadingFailed "failed to load data")
-        (Just _, Nothing) -> throw (EnvironmentVariableMissing "required environment variable IB_FLEX_REPORT_TOKEN is missing")
-        (Nothing, Just _) -> throw (EnvironmentVariableMissing "required environment variable IB_FLEX_QUERY_ID is missing")
-        (Nothing, Nothing) -> throw (EnvironmentVariableMissing "required environment variables IB_FLEX_QUERY_ID and IB_FLEX_REPORT_TOKEN are missing")
+        Nothing -> throw (EnvironmentVariableMissing "required environment variable IB_FLEX_REPORT_TOKEN is missing")

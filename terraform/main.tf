@@ -7,13 +7,16 @@ locals {
   ghc_dist_path              = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
   hello_rest_lambda_dir_name = "aws-app"
   echo_lambda_dir_name       = "echo-app"
+  ibrokers_app_dir_name       = "ibrokers-app"
   dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
   exe_path_hello_rest_lambda = "${local.dist_path}/${local.hello_rest_lambda_dir_name}/build/${local.hello_rest_lambda_dir_name}/${local.hello_rest_lambda_dir_name}"
   exe_path_echo_lambda       = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
+  exe_path_ibrokers_app      = "${local.dist_path}/${local.ibrokers_app_dir_name}/build/${local.ibrokers_app_dir_name}/${local.ibrokers_app_dir_name}"
 
   lambda_functions = {
       "${var.aws_stage}-hello-rest-lambda" = local.exe_path_hello_rest_lambda,
-      "${var.aws_stage}-echo-lambda"       = local.exe_path_echo_lambda
+      "${var.aws_stage}-echo-lambda"       = local.exe_path_echo_lambda,
+      "${var.aws_stage}-ibrokers-app"       = local.exe_path_ibrokers_app,
   }
   
   ibrokers_bucket_name = "${var.aws_stage}-ibrokers-positions"

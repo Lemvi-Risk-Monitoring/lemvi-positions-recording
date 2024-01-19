@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module IBrokersReports (loadIBRecords, checkReportError, makeIBRecords, RowData) where
+module IBrokersReports (loadIBFlexReport, loadIBRecords, checkReportError, makeIBRecords, RowData) where
 
 import Network.HTTP.Simple
     ( parseRequest, getResponseBody, httpBS )
@@ -18,9 +18,9 @@ import Data.Aeson (encode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Map.Strict (fromList)
 
-loadIBRecords :: String -> String -> IO (Maybe Element)
-loadIBRecords ib_token ib_query_id = do
-    let ibFlexUrl = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest?t=" ++ ib_token ++ "&q=" ++ ib_query_id ++ "&v=3"
+loadIBFlexReport :: String -> String -> String -> IO (Maybe String)
+loadIBFlexReport ibFlexURL ibToken ibQueryId = do
+    let ibFlexUrl = ibFlexURL ++ "?t=" ++ ibToken ++ "&q=" ++ ibQueryId ++ "&v=3"
 
     request <- parseRequest ibFlexUrl
     ibResponse <- httpBS request
@@ -30,15 +30,17 @@ loadIBRecords ib_token ib_query_id = do
         ibReportBaseUrl = findURL ibReportLocation
     case (ibReportReferenceCode, ibReportBaseUrl) of
         (Just refCode, Just url) -> do
-            let ibReportURL  = url ++ "?t=" ++ ib_token ++ "&q=" ++ refCode ++ "&v=3"
+            let ibReportURL  = url ++ "?t=" ++ ibToken ++ "&q=" ++ refCode ++ "&v=3"
             reportRequest <- parseRequest ibReportURL
             ibReport <- httpBS reportRequest
-
-            let reportText = BS.unpack (getResponseBody ibReport) :: String
-            return $ parseXMLDoc reportText
+            return $ Just $ BS.unpack (getResponseBody ibReport)
 
         _ -> return Nothing
-   
+
+loadIBRecords :: String -> String -> String -> IO (Maybe Element)
+loadIBRecords ibFlexURL ibToken ibQueryId = do
+    report <- loadIBFlexReport ibFlexURL ibToken ibQueryId
+    return $ parseXMLDoc =<< report
 
 findReferenceCode :: Maybe Element -> Maybe String
 findReferenceCode (Just tree) = strContent <$> findElement (unqual "ReferenceCode") tree

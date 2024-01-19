@@ -8,6 +8,7 @@ import IBrokersReports (loadIBRecords, checkReportError, makeIBRecords)
 import Control.Exception (Exception, throw)
 import Data.Data (Typeable)
 import Data.Text (Text, pack)
+import Data.Maybe (fromMaybe)
 
 data IBrokersException
   = LoadingFailed !Text
@@ -20,11 +21,13 @@ instance Exception IBrokersException
 
 main :: IO ()
 main = do
+    let ibFlexUrlDefault = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
     flexQueryId <- lookupEnv "IB_FLEX_QUERY_ID"
     flexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
+    ibFlexURL <- lookupEnv "IB_FLEX_URL"
     case (flexQueryId, flexReportToken) of
         (Just qId, Just token) -> do
-            maybeTree <- loadIBRecords token qId
+            maybeTree <- loadIBRecords (fromMaybe ibFlexUrlDefault ibFlexURL) token qId
             case maybeTree of
                 Just tree -> case checkReportError tree of
                     Just (errorCode, errorMessage) -> throw (ReportServerError (pack msg))

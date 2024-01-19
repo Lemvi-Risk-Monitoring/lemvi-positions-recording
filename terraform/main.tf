@@ -4,11 +4,12 @@ provider "aws" {
 
 locals {
   project_name_version       = "lemvi-positions-recording-0.1.0.0"
-  dist_path                  = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
+  ghc_dist_path              = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
   hello_rest_lambda_dir_name = "aws-app"
   echo_lambda_dir_name       = "echo-app"
-  exe_path_hello_rest_lambda = "${path.cwd}/${local.dist_path}/${local.project_name_version}/x/${local.hello_rest_lambda_dir_name}/build/${local.hello_rest_lambda_dir_name}/${local.hello_rest_lambda_dir_name}"
-  exe_path_echo_lambda       = "${path.cwd}/${local.dist_path}/${local.project_name_version}/x/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
+  dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
+  exe_path_hello_rest_lambda = "${dist_path}/${local.hello_rest_lambda_dir_name}/build/${local.hello_rest_lambda_dir_name}/${local.hello_rest_lambda_dir_name}"
+  exe_path_echo_lambda       = "${dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
 
   lambda_functions = {
       "hello-rest-lambda" = local.exe_path_hello_rest_lambda,

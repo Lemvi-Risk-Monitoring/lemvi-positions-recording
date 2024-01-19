@@ -14,10 +14,9 @@ The access and secret keys are generated from the AWS account (top left, ""Secur
 aws configure
 ```
 
-Environment variables for `terraform`:
+Environment variables for `terraform` are set by calling a script at the end of the Dockerfile:
 
 ```shell
-export TF_VAR_aws_lambda_function_name=hal-example-2
 export TF_VAR_aws_stage=test
 export TF_VAR_aws_region=$(aws configure get region)
 export TF_VAR_aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')

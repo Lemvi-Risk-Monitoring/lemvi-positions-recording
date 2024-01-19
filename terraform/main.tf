@@ -3,15 +3,33 @@ provider "aws" {
 }
 
 locals {
-  project_name_version = "lemvi-positions-recording-0.1.0.0"
-  lambda_dir_name      = "aws-app"
-  dist_path            = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
-  lambda_exe_path      = "${path.cwd}/${local.dist_path}/${local.project_name_version}/x/${local.lambda_dir_name}/build/${local.lambda_dir_name}/${local.lambda_dir_name}"
+  project_name_version       = "lemvi-positions-recording-0.1.0.0"
+  dist_path                  = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
+  hello_rest_lambda_dir_name = "aws-app"
+  echo_lambda_dir_name       = "echo-app"
+  exe_path_hello_rest_lambda = "${path.cwd}/${local.dist_path}/${local.project_name_version}/x/${local.hello_rest_lambda_dir_name}/build/${local.hello_rest_lambda_dir_name}/${local.hello_rest_lambda_dir_name}"
+  exe_path_echo_lambda       = "${path.cwd}/${local.dist_path}/${local.project_name_version}/x/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
+
+  lambda_functions = {
+      "hello-rest-lambda" = local.exe_path_hello_rest_lambda,
+      "echo-lambda"       = local.exe_path_echo_lambda
+    }
 }
 
 module "lambda_function" {
+  for_each = local.lambda_functions
   source = "./aws-lambda"
 
-  exe_path = local.lambda_exe_path
-  function_name = var.aws_lambda_function_name
+  function_name = each.key
+  exe_path = each.value
+}
+
+module "gateway_proxy_integration" {
+  source = "./gateway-proxy-integration"
+
+  api_description      = "HAL API Gateway"
+  api_url_path         = "greet"
+  function_name        = "hello-rest-lambda"
+  function_invoke_arn  = module.lambda_function["hello-rest-lambda"].invoke_arn
+  aws_stage            = var.aws_stage
 }

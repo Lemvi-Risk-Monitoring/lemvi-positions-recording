@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE GADTs #-}
 
-module Main where
+module Main (main) where
 
 import AWS.Lambda.Runtime (pureRuntime)
 import Data.Aeson         (FromJSON, ToJSON)

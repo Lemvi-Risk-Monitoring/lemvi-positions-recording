@@ -11,20 +11,19 @@ import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHea
 import Data.Aeson.TH (deriveJSON, defaultOptions, Options(fieldLabelModifier))
 
 import Helper (toSnake)
-import Data.Aeson ( Value, decodeStrict, parseJSON, ToJSON )
+import Data.Aeson ( Value, decodeStrict, parseJSON, ToJSON, encode )
 import qualified Data.HashMap.Lazy as DH
 import Data.Aeson.Types (parseMaybe, Parser)
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 
-data AuthParams where
-  AuthParams :: {
+data AuthParams = AuthParams {
     clientId :: String,
     clientSecret :: String,
     grantType :: String
-    } -> AuthParams
-  deriving Generic
+    }
+  deriving (Generic, Show)
 
 $(deriveJSON defaultOptions {fieldLabelModifier = toSnake} ''AuthParams)
 
@@ -34,7 +33,9 @@ authorizeWithCredentials deribitClientId deribitClientSecret publicURL =  do
     let
         headers = [("Content-Type", "application/json")]
         authParams = AuthParams { clientId=deribitClientId, clientSecret=deribitClientSecret, grantType="client_credentials"}
-    ibResponse <- trace ("calling url " ++ show request)  httpBS $ setRequestBodyJSON authParams $ setRequestHeaders headers request
+        withHeaders = setRequestHeaders headers request
+        withAuthBody = setRequestBodyJSON authParams withHeaders
+    ibResponse <- trace ("calling url " ++ show withAuthBody) trace ("calling url " ++ show (encode authParams)) httpBS withAuthBody
     let result = decodeStrict (getResponseBody ibResponse) :: Maybe Value
     print ("result " ++ show result) 
     return (extractToken "access_token" result, extractToken "refresh_token" result)

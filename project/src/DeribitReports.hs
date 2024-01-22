@@ -1,28 +1,68 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DeriveGeneric  #-}
+{-# LANGUAGE TemplateHaskell #-}
 
-module DeribitReports (authorizeWithCredentials) where
+module DeribitReports (handler, DeribitReportResult) where
 
-import Network.HTTP.Simple (parseRequest, httpJSONEither, getResponseBody, httpBS)
-import Data.ByteString (pack, unpack)
+import GHC.Generics       (Generic)
+import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHeaders, setRequestBodyJSON)
 
--- def authorize_with_credentials(client_id: str, client_secret: str) -> Tuple[Dict[str, str], str]:
---     print(f"connecting with {client_id}")
---     headers = {"Content-Type": "application/json"}
---     auth_params = {
---         "client_id": client_id,
---         "client_secret": client_secret,
---         "grant_type": "client_credentials"
---     }
---     authentication = requests.get(f"{public_url}/auth", params=auth_params, headers=headers).json()
---     headers["Authorization"] = f"Bearer {authentication['result']['access_token']}"
---     refresh_token = authentication['result']['refresh_token']
---     return headers, refresh_token
+import Data.Aeson.TH (deriveJSON, defaultOptions, Options(fieldLabelModifier))
 
-import qualified Data.ByteString.Char8 as BS
+import Helper (toSnake)
+import Data.Aeson ( Value, decodeStrict, parseJSON, ToJSON )
+import qualified Data.HashMap.Lazy as DH
+import Data.Aeson.Types (parseMaybe, Parser)
+import System.Environment (lookupEnv)
+import Data.Maybe (fromMaybe)
+import Debug.Trace (trace)
 
+data AuthParams where
+  AuthParams :: {
+    clientId :: String,
+    clientSecret :: String,
+    grantType :: String
+    } -> AuthParams
+  deriving Generic
 
-authorizeWithCredentials :: String -> String -> String -> IO (String, String)
-authorizeWithCredentials clientId clientSecret publicURL =  do
+$(deriveJSON defaultOptions {fieldLabelModifier = toSnake} ''AuthParams)
+
+authorizeWithCredentials :: String -> String -> String -> IO (Maybe String, Maybe String)
+authorizeWithCredentials deribitClientId deribitClientSecret publicURL =  do
     request <- parseRequest $ publicURL ++ "/auth"
-    ibResponse <- httpBS request
-    return (BS.unpack (getResponseBody ibResponse), "")
+    let
+        headers = [("Content-Type", "application/json")]
+        authParams = AuthParams { clientId=deribitClientId, clientSecret=deribitClientSecret, grantType="client_credentials"}
+    ibResponse <- trace ("calling url " ++ show request)  httpBS $ setRequestBodyJSON authParams $ setRequestHeaders headers request
+    let result = decodeStrict (getResponseBody ibResponse) :: Maybe Value
+    print ("result " ++ show result) 
+    return (extractToken "access_token" result, extractToken "refresh_token" result)
+
+extractToken :: String -> Maybe Value -> Maybe String
+extractToken field (Just mVal) = do
+    obj <- parseMaybe (parseJSON :: Value -> Parser (DH.HashMap String Value)) mVal
+    result <- DH.lookup "result" obj >>= parseMaybe (parseJSON :: Value -> Parser (DH.HashMap String String))
+    DH.lookup field result
+extractToken _ Nothing = Nothing
+
+data DeribitReportResult where
+  DeribitReportResult :: {message :: String} -> DeribitReportResult
+  deriving Generic
+instance ToJSON DeribitReportResult
+
+handler :: Value -> IO DeribitReportResult
+handler _ = do
+            deribitClientId <- lookupEnv "DERIBIT_CLIENT_ID"
+            deribitClientSecret <- lookupEnv "DERIBIT_CLIENT_SECRET"
+            case (deribitClientId, deribitClientSecret) of
+                (Just deribitClientId', Just deribitClientSecret') -> do
+                  (content, _) <- authorizeWithCredentials deribitClientId' deribitClientSecret' publicURL
+                  return $ DeribitReportResult { message = fromMaybe "failed" content }
+                _ -> return $ DeribitReportResult { message = "error" }
+                    
+    where
+        hostName = "www.deribit.com"
+        deribitEndpointV2 = "https://" ++ hostName ++ "/api/v2"
+        publicURL = deribitEndpointV2 ++ "/public"
+        privateURL = deribitEndpointV2 ++ "/private"

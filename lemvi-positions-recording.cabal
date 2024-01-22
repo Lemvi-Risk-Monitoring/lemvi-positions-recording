@@ -34,6 +34,7 @@ common shared
         , text >= 2.0.2 && < 2.1
         , warp >= 3.3.31 && < 3.4
         , xml >= 1.3.14 && < 1.4
+        , unordered-containers
     ghc-options:
         -Wall
         -Wcompat
@@ -53,6 +54,7 @@ common shared
 library
     import:           shared
     exposed-modules: Services
+        , Helper
         , IBrokersReports
         , DeribitReports
 
@@ -95,9 +97,23 @@ executable deribit-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
 
+executable deribit-local
+    import:           shared
+    main-is:          Local.hs
+    hs-source-dirs:   project/deribit-app
+    default-language: Haskell2010
+    build-depends: lemvi-positions-recording
+
 test-suite lemvi-positions-recording-test
     import:           shared
     default-language: Haskell2010
     type:             exitcode-stdio-1.0
     hs-source-dirs:   project/test
     main-is:          Spec.hs
+    other-modules:
+        Helper
+        HelperSpec
+    hs-source-dirs:
+        project/test
+        project/src
+    build-depends: hspec

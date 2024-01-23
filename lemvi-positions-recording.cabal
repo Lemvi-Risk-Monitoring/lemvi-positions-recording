@@ -53,7 +53,7 @@ common shared
 
 library
     import:           shared
-    exposed-modules: Services
+    exposed-modules: Echo
         , Helper
         , IBrokersReports
         , DeribitReports
@@ -67,19 +67,12 @@ executable echo-app
     hs-source-dirs:   project/echo-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
-
-executable aws-app
-    import:           shared
-    main-is:          Main.hs
-    hs-source-dirs:   project/aws-app
-    default-language: Haskell2010
-    build-depends: lemvi-positions-recording
         , wai-handler-hal >= 0.4.0 && < 0.5
 
-executable local-app
+executable echo-local
     import:           shared
-    main-is:          Main.hs
-    hs-source-dirs:   project/local-app
+    main-is:          Local.hs
+    hs-source-dirs:   project/echo-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
 
@@ -96,6 +89,7 @@ executable deribit-app
     hs-source-dirs:   project/deribit-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
+        , wai-handler-hal >= 0.4.0 && < 0.5
 
 executable deribit-local
     import:           shared

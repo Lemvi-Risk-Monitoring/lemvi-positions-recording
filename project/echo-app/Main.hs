@@ -1,21 +1,8 @@
-{-# LANGUAGE DeriveGeneric  #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE GADTs #-}
-
 module Main (main) where
 
-import AWS.Lambda.Runtime (pureRuntime)
-import Data.Aeson         (FromJSON, ToJSON)
-import GHC.Generics       (Generic)
-
-data IdEvent  = IdEvent { input   :: String } deriving Generic
-instance FromJSON IdEvent
-
-data IdResult = IdResult { output :: String } deriving Generic
-instance ToJSON IdResult
-
-handler :: IdEvent -> IdResult
-handler IdEvent { input } = IdResult { output = input }
+import AWS.Lambda.Runtime (mRuntime)
+import qualified Echo
+import qualified Network.Wai.Handler.Hal as WaiHandler
 
 main :: IO ()
-main = pureRuntime handler
+main = mRuntime $ WaiHandler.run Echo.app

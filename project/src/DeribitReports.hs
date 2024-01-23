@@ -2,8 +2,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DataKinds #-}
 
-module DeribitReports (handler, DeribitReportResult) where
+module DeribitReports (app) where
 
 import GHC.Generics       (Generic)
 import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHeaders, setRequestBodyJSON)
@@ -13,10 +15,16 @@ import Data.Aeson.TH (deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import Helper (toSnake)
 import Data.Aeson ( Value, decodeStrict, parseJSON, ToJSON, encode )
 import qualified Data.HashMap.Lazy as DH
-import Data.Aeson.Types (parseMaybe, Parser)
+import Data.Aeson.Types ( parseMaybe, Parser )
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
+
+import Servant (Proxy(Proxy), (:>), JSON, Post, ReqBody)
+import Servant.Server (Application, serve, Handler)
+import Control.Monad.IO.Class (liftIO)
+
+
 
 data AuthParams = AuthParams {
     clientId :: String,
@@ -37,7 +45,7 @@ authorizeWithCredentials deribitClientId deribitClientSecret publicURL =  do
         withAuthBody = setRequestBodyJSON authParams withHeaders
     ibResponse <- trace ("calling url " ++ show withAuthBody) trace ("calling url " ++ show (encode authParams)) httpBS withAuthBody
     let result = decodeStrict (getResponseBody ibResponse) :: Maybe Value
-    print ("result " ++ show result) 
+    print ("result " ++ show result)
     return (extractToken "access_token" result, extractToken "refresh_token" result)
 
 extractToken :: String -> Maybe Value -> Maybe String
@@ -61,9 +69,21 @@ handler _ = do
                   (content, _) <- authorizeWithCredentials deribitClientId' deribitClientSecret' publicURL
                   return $ DeribitReportResult { message = fromMaybe "failed" content }
                 _ -> return $ DeribitReportResult { message = "error" }
-                    
+
     where
         hostName = "www.deribit.com"
         deribitEndpointV2 = "https://" ++ hostName ++ "/api/v2"
         publicURL = deribitEndpointV2 ++ "/public"
         privateURL = deribitEndpointV2 ++ "/private"
+
+
+handlers :: Value -> Handler DeribitReportResult
+handlers = liftIO . handler
+
+type Api =
+  "endpoint"
+    :> ReqBody '[JSON] Value
+    :> Post '[JSON] DeribitReportResult
+
+app :: Application
+app = serve (Proxy :: Proxy Api) handlers

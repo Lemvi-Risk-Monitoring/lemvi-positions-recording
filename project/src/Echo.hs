@@ -1,24 +1,24 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Services (app) where
+
+module Echo (app) where
 
 import Data.Aeson (ToJSON (..), object, (.=))
-import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Servant.API
-    ( type (:<|>)(..),
-      JSON,
+    ( JSON,
       Required,
       Strict,
       QueryParam',
       type (:>),
-      Get )
-import Servant.Server (Application, Server, serve)
+      Get,
+      type (:<|>)(..) )
 
-type Api = Greet :<|> Hoot
+import Servant.Server ( Server, Application, serve, Handler )
+import Data.Proxy (Proxy (..))
+
 
 type Greet =
   "greet"
@@ -38,5 +38,10 @@ newtype Message = Message Text
 instance ToJSON Message where
   toJSON (Message t) = object ["message" .= t]
 
+type Api = Echo.Greet :<|> Echo.Hoot
+
+handlers :: (Text -> Handler Echo.Message) :<|> Handler Echo.Message
+handlers = Echo.greet :<|> Echo.hoot
+
 app :: Application
-app = serve (Proxy @Api) $ greet :<|> hoot
+app = serve (Proxy :: Proxy Api) handlers

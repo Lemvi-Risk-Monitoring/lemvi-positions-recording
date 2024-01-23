@@ -67,3 +67,14 @@ cabal run local-app
 ```shell
 curl 127.0.0.1:8080/greet?person=John
 ```
+
+```shell
+cabal run deribit-local
+
+sudo rm -fr /tmp/http.log && sudo tcpdump -i any -w /tmp/http.log
+
+curl -X POST -H "Content-Type: application/json" -d '{"dummy":"dummy"}' http://localhost:8080/endpoint
+
+
+sudo tcpdump -A -r /tmp/http.log tcp port 443
+```

@@ -5,3 +5,7 @@ variable "aws_region" {
 variable "aws_stage" {
   type = string
 }
+
+variable "ib_flex_report_token" {
+  type = string
+}

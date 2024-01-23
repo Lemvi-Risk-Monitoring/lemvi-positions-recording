@@ -43,7 +43,7 @@ cabal build
 ### Function deployment
 
 ```shell
-terraform -chdir=terraform apply
+terraform -chdir=terraform apply -var "ib_flex_report_token=$IB_FLEX_REPORT_TOKEN"
 ```
 
 ## Testing deployment
@@ -54,6 +54,15 @@ aws apigateway test-invoke-method \
     --resource-id $(terraform -chdir=terraform output --raw ressource_id) \
     --http-method GET \
     --path-with-query-string /greet?person=Mary | jq -r '.body'
+```
+
+```shell
+aws aws lambda invoke \
+    --function-name ibrokers-app \
+    --payload '{ "ib_flex_query_id": "906041" }' \
+    --cli-binary-format raw-in-base64-out \
+    out.log
+
 ```
 
 ### Testing locally

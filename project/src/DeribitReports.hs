@@ -6,12 +6,11 @@
 
 module DeribitReports (app) where
 
-import qualified Data.HashMap.Lazy as DH
 import qualified Data.ByteString.Char8 as BSC
 
 import GHC.Generics       (Generic)
 import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHeaders)
-import Data.Aeson ( Value, decodeStrict, parseJSON, ToJSON )
+import Data.Aeson ( Value, decodeStrict, ToJSON, withObject, (.:) )
 import Data.Aeson.Types ( parseMaybe, Parser )
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
@@ -34,16 +33,24 @@ authorizeWithCredentials deribitClientId deribitClientSecret publicURL =  do
           ]
         withAuthQuery = setQueryString queryParams withHeaders
     ibResponse <- httpBS withAuthQuery
-    let result = decodeStrict (getResponseBody ibResponse) :: Maybe Value
-    print ("result " ++ show result)
-    return (extractToken "access_token" result, extractToken "refresh_token" result)
+    let maybeAccessToken = parseMaybe tokenParser =<< decodeStrict (getResponseBody ibResponse)
+    case maybeAccessToken of
+      Just tokenResponse -> do
+        return (Just (access_token tokenResponse), Just (refresh_token tokenResponse))
+      Nothing -> return (Nothing, Nothing)
 
-extractToken :: String -> Maybe Value -> Maybe String
-extractToken field (Just mVal) = do
-    obj <- parseMaybe (parseJSON :: Value -> Parser (DH.HashMap String Value)) mVal
-    result <- DH.lookup "result" obj >>= parseMaybe (parseJSON :: Value -> Parser (DH.HashMap String String))
-    DH.lookup field result
-extractToken _ Nothing = Nothing
+data TokenResponse = TokenResponse
+  {
+    access_token :: String,
+    refresh_token :: String
+  } deriving Show
+
+tokenParser :: Value -> Parser TokenResponse
+tokenParser = withObject "AccessTokenResponse" $ \obj -> do
+  resultObj <- obj .: "result"
+  TokenResponse
+    <$> resultObj .: "access_token"
+    <*> resultObj .: "refresh_token"
 
 data DeribitReportResult where
   DeribitReportResult :: {message :: String} -> DeribitReportResult
@@ -72,7 +79,7 @@ handlers = liftIO . handler
 
 type Api =
   "endpoint"
-    :> ReqBody '[JSON] Value -- should be in query string !!!
+    :> ReqBody '[JSON] Value
     :> Post '[JSON] DeribitReportResult
 
 app :: Application

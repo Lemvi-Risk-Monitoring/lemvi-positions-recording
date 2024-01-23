@@ -26,6 +26,7 @@ module "lambda_function" {
 
   function_name = each.key
   exe_path = each.value
+  timeout = 60
   environment_variables = { "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token }
 }
 

@@ -25,6 +25,7 @@ resource "aws_lambda_function" "lambda_function" {
   handler          = "handler"
   runtime          = "provided.al2023"
   source_code_hash = data.archive_file.lambda_package.output_base64sha256
+  timeout          = var.timeout
   environment {
     variables = var.environment_variables
   }

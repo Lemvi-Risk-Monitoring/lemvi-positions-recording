@@ -9,3 +9,7 @@ variable "function_name" {
 variable "environment_variables" {
   type = map(string)
 }
+
+variable "timeout" {
+  type = number
+}

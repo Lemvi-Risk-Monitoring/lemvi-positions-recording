@@ -3,9 +3,12 @@
 {-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module DeribitReports (app) where
 
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 
 import GHC.Generics       (Generic)
@@ -13,36 +16,37 @@ import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHea
 import Data.Aeson ( Value, decodeStrict, ToJSON, withObject, (.:) )
 import Data.Aeson.Types ( parseMaybe, Parser )
 import System.Environment (lookupEnv)
-import Data.Maybe (fromMaybe)
 import Servant (Proxy(Proxy), (:>), JSON, Post, ReqBody)
 import Servant.Server (Application, serve, Handler)
 import Control.Monad.IO.Class (liftIO)
 import Network.HTTP.Client (setQueryString)
+import Data.String (IsString)
 
+newtype DeribitClientId = DeribitClientId {getClientId :: BS.ByteString} deriving newtype (IsString, Show)
+newtype DeribitClientSecret = DeribitClientSecret {getClientSecret ::BS.ByteString} deriving newtype (IsString, Show)
 
-authorizeWithCredentials :: String -> String -> String -> IO (Maybe String, Maybe String)
+authorizeWithCredentials :: DeribitClientId -> DeribitClientSecret -> String -> IO (Maybe (String, String))
 authorizeWithCredentials deribitClientId deribitClientSecret publicURL =  do
-    request <- parseRequest $ publicURL ++ "/auth"
+    request <- parseRequest $ publicURL <> "/auth"
     let
         headers = [("Content-Type", "application/json")]
         withHeaders = setRequestHeaders headers request
         queryParams = [
-            ("client_id", Just (BSC.pack deribitClientId)),
-            ("client_secret", Just (BSC.pack deribitClientSecret)),
+            ("client_id", Just (getClientId deribitClientId)),
+            ("client_secret", Just (getClientSecret deribitClientSecret)),
             ("grant_type", Just "client_credentials")
           ]
         withAuthQuery = setQueryString queryParams withHeaders
     ibResponse <- httpBS withAuthQuery
     let maybeAccessToken = parseMaybe tokenParser =<< decodeStrict (getResponseBody ibResponse)
     case maybeAccessToken of
-      Just tokenResponse -> do
-        return (Just (access_token tokenResponse), Just (refresh_token tokenResponse))
-      Nothing -> return (Nothing, Nothing)
+      Just tokenResponse -> return $ Just (accessToken tokenResponse, refreshToken tokenResponse)
+      Nothing -> return Nothing
 
 data TokenResponse = TokenResponse
   {
-    access_token :: String,
-    refresh_token :: String
+    accessToken :: String,
+    refreshToken :: String
   } deriving Show
 
 tokenParser :: Value -> Parser TokenResponse
@@ -63,15 +67,17 @@ handler _ = do
             deribitClientSecret <- lookupEnv "DERIBIT_CLIENT_SECRET"
             case (deribitClientId, deribitClientSecret) of
                 (Just deribitClientId', Just deribitClientSecret') -> do
-                  (content, _) <- authorizeWithCredentials deribitClientId' deribitClientSecret' publicURL
-                  return $ DeribitReportResult { message = fromMaybe "failed" content }
-                _ -> return $ DeribitReportResult { message = "error" }
+                  credentials <- authorizeWithCredentials (DeribitClientId (BSC.pack deribitClientId')) (DeribitClientSecret (BSC.pack deribitClientSecret')) publicURL
+                  case credentials of
+                    Nothing ->  return $ DeribitReportResult { message = "authentication failed" }
+                    Just (accessToken, refreshToken) -> return $ DeribitReportResult { message = "successfully authentified" }
+                _ -> return $ DeribitReportResult { message = "error: environment variables DERIBIT_CLIENT_ID and DERIBIT_CLIENT_SECRET are required" }
 
     where
         hostName = "www.deribit.com"
         deribitEndpointV2 = "https://" ++ hostName ++ "/api/v2"
-        publicURL = deribitEndpointV2 ++ "/public"
-        privateURL = deribitEndpointV2 ++ "/private"
+        publicURL = deribitEndpointV2 <> "/public"
+        privateURL = deribitEndpointV2 <> "/private"
 
 
 handlers :: Value -> Handler DeribitReportResult

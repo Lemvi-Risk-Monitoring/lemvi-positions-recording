@@ -82,7 +82,7 @@ handlers = liftIO . handler
 
 type Api =
   "endpoint"
-    :> ReqBody '[JSON] Value
+    :> ReqBody '[JSON] Value -- should be in query string !!!
     :> Post '[JSON] DeribitReportResult
 
 app :: Application

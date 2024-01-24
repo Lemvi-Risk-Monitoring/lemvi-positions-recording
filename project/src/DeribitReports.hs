@@ -29,6 +29,8 @@ import Data.String (IsString)
 import Network.HTTP.Types.Status (statusIsSuccessful)
 import qualified Amazonka as AWS
 import qualified Amazonka.S3 as S3
+import qualified Data.Text.Encoding as T
+import Data.Maybe (fromMaybe)
 
 newtype DeribitClientId = DeribitClientId {getClientId :: BS.ByteString} deriving newtype (IsString, Show)
 newtype DeribitClientSecret = DeribitClientSecret {getClientSecret ::BS.ByteString} deriving newtype (IsString, Show)
@@ -73,13 +75,17 @@ handler :: A.Value -> IO DeribitReportResult
 handler _ = do
             deribitClientId <- lookupEnv "DERIBIT_CLIENT_ID"
             deribitClientSecret <- lookupEnv "DERIBIT_CLIENT_SECRET"
-            case (deribitClientId, deribitClientSecret) of
-                (Just deribitClientId', Just deribitClientSecret') -> do
-                  credentials <- authorizeWithCredentials (DeribitClientId (BSC.pack deribitClientId')) (DeribitClientSecret (BSC.pack deribitClientSecret')) publicURL
+            deribitBucket <- fromMaybe "dev-deribit-positions" <$> lookupEnv "DERIBIT_BUCKET_POSITIONS"
+            case (deribitClientId, deribitClientSecret, deribitBucket) of
+                (Just deribitClientId', Just deribitClientSecret', bucket) -> do
+                  let
+                    clientId = DeribitClientId $ BSC.pack deribitClientId'
+                    clientSecret = DeribitClientSecret $ BSC.pack deribitClientSecret'
+                  credentials <- authorizeWithCredentials clientId clientSecret publicURL
                   case credentials of
                     Nothing ->  return $ ReportError "authentication failed"
-                    Just (token, _) -> savePositions token privateURL "BTC"
-                _ -> return $ ReportError "error: environment variables DERIBIT_CLIENT_ID and DERIBIT_CLIENT_SECRET are required"
+                    Just (token, _) -> savePositions token privateURL "BTC" (T.pack bucket)
+                _ -> return $ ReportError "error: environment variables DERIBIT_CLIENT_ID, DERIBIT_CLIENT_SECRET and DERIBIT_BUCKET_POSITIONS are required"
 
     where
         hostName = "www.deribit.com"
@@ -87,8 +93,8 @@ handler _ = do
         publicURL = deribitEndpointV2 <> "/public"
         privateURL = deribitEndpointV2 <> "/private"
 
-savePositions :: BS.ByteString -> String -> BS.ByteString -> IO DeribitReportResult
-savePositions token privateURL currencyCode = do
+savePositions :: BS.ByteString -> String -> T.Text -> T.Text -> IO DeribitReportResult
+savePositions token privateURL currencyCode bucket = do
     request <- parseRequest $ privateURL <> "/get_positions"
     let
         headers = [
@@ -98,7 +104,7 @@ savePositions token privateURL currencyCode = do
         withHeaders = setRequestHeaders headers request
 
         queryParams = [
-            ("currency", Just currencyCode)
+            ("currency", Just $ T.encodeUtf8 currencyCode)
           ]
         withBodyParams = setRequestQueryString queryParams withHeaders
     ibResponse <- httpBS withBodyParams
@@ -107,21 +113,21 @@ savePositions token privateURL currencyCode = do
       responseStatus = getResponseStatus ibResponse
       success = statusIsSuccessful responseStatus
     if success then
-        case A.decodeStrict responseBody :: Maybe (A.Value) of
+        case A.decodeStrict responseBody :: Maybe A.Value of
           Just (A.Object json) -> (if KM.member "result" json then (do
-                  writeToS3 (TE.decodeUtf8 responseBody)
+                  writeToS3 (S3.BucketName bucket) (S3.ObjectKey currencyCode) (AWS.toBody responseBody)
                   return $ ReportContent (TE.decodeUtf8 responseBody))
                 else
                   return $ ReportError $ "no result found in body: " <> TE.decodeUtf8 responseBody)
-          _ -> return $ ReportError $ "failed to parse body: " <> TE.decodeUtf8 responseBody        
+          _ -> return $ ReportError $ "failed to parse body: " <> TE.decodeUtf8 responseBody
       else
       return $ ReportError $ "failed to load positions: " <> TE.decodeUtf8 responseBody
 
-writeToS3 :: T.Text -> IO ()
-writeToS3 json = do
+writeToS3 :: S3.BucketName -> S3.ObjectKey -> AWS.RequestBody -> IO ()
+writeToS3 bucket currencyCode json = do
   env <- AWS.newEnv AWS.discover
-  resp <- AWS.runResourceT $ AWS.send env S3.newListBuckets
-  print $ resp
+  resp <- AWS.runResourceT $ AWS.send env (S3.newPutObject bucket currencyCode json)
+  print resp
   return ()
 
 handlers :: A.Value -> Handler DeribitReportResult

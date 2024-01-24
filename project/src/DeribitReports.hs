@@ -6,6 +6,8 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 
 
 module DeribitReports (app) where
@@ -16,6 +18,12 @@ import qualified Data.Text as T
 import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Text.Encoding as TE
+import qualified Amazonka as AWS
+import qualified Amazonka.S3 as S3
+import qualified Data.Text.Encoding as T
+import qualified Control.Lens as CL
+
+import qualified Helper
 
 import GHC.Generics (Generic)
 import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHeaders, getResponseStatus, setRequestQueryString)
@@ -27,10 +35,9 @@ import Servant.Server (Application, serve, Handler)
 import Control.Monad.IO.Class (liftIO)
 import Data.String (IsString)
 import Network.HTTP.Types.Status (statusIsSuccessful)
-import qualified Amazonka as AWS
-import qualified Amazonka.S3 as S3
-import qualified Data.Text.Encoding as T
 import Data.Maybe (fromMaybe)
+
+import Amazonka.S3.PutObject (putObject_contentType)
 
 newtype DeribitClientId = DeribitClientId {getClientId :: BS.ByteString} deriving newtype (IsString, Show)
 newtype DeribitClientSecret = DeribitClientSecret {getClientSecret ::BS.ByteString} deriving newtype (IsString, Show)
@@ -95,18 +102,21 @@ handler _ = do
 
 savePositions :: BS.ByteString -> String -> T.Text -> T.Text -> IO DeribitReportResult
 savePositions token privateURL currencyCode bucket = do
+    (year, month, day) <- Helper.today
     request <- parseRequest $ privateURL <> "/get_positions"
     let
-        headers = [
-          ("Content-Type", "application/json"),
-          ("Authorization", "Bearer " <> token)
-          ]
-        withHeaders = setRequestHeaders headers request
+      path = T.pack $ Helper.formatDate "/" (year, month, day)
+      filename = T.pack $ "positions-" <> Helper.formatDate "-" (year, month, day) <> "-" <> T.unpack currencyCode <> ".json"
+      headers = [
+        ("Content-Type", "application/json"),
+        ("Authorization", "Bearer " <> token)
+        ]
+      withHeaders = setRequestHeaders headers request
 
-        queryParams = [
-            ("currency", Just $ T.encodeUtf8 currencyCode)
-          ]
-        withBodyParams = setRequestQueryString queryParams withHeaders
+      queryParams = [
+          ("currency", Just $ T.encodeUtf8 currencyCode)
+        ]
+      withBodyParams = setRequestQueryString queryParams withHeaders
     ibResponse <- httpBS withBodyParams
     let
       responseBody = getResponseBody ibResponse
@@ -114,20 +124,24 @@ savePositions token privateURL currencyCode bucket = do
       success = statusIsSuccessful responseStatus
     if success then
         case A.decodeStrict responseBody :: Maybe A.Value of
-          Just (A.Object json) -> (if KM.member "result" json then (do
-                  writeToS3 (S3.BucketName bucket) (S3.ObjectKey currencyCode) (AWS.toBody responseBody)
-                  return $ ReportContent (TE.decodeUtf8 responseBody))
-                else
-                  return $ ReportError $ "no result found in body: " <> TE.decodeUtf8 responseBody)
+          Just (A.Object json) -> (
+            if KM.member "result" json then (do
+              let
+              writeToS3 (S3.BucketName bucket) (S3.ObjectKey (path <> "/" <> filename)) (AWS.toBody responseBody) "application/json"
+              return $ ReportContent (TE.decodeUtf8 responseBody)
+              )
+            else
+              return $ ReportError $ "no result found in body: " <> TE.decodeUtf8 responseBody)
           _ -> return $ ReportError $ "failed to parse body: " <> TE.decodeUtf8 responseBody
       else
       return $ ReportError $ "failed to load positions: " <> TE.decodeUtf8 responseBody
 
-writeToS3 :: S3.BucketName -> S3.ObjectKey -> AWS.RequestBody -> IO ()
-writeToS3 bucket currencyCode json = do
+writeToS3 :: S3.BucketName -> S3.ObjectKey -> AWS.RequestBody -> T.Text -> IO ()
+writeToS3 bucket filename json objectType = do
   env <- AWS.newEnv AWS.discover
-  resp <- AWS.runResourceT $ AWS.send env (S3.newPutObject bucket currencyCode json)
-  print resp
+  let
+    request = (S3.newPutObject bucket filename json) CL.& putObject_contentType CL.?~ objectType
+  _ <- AWS.runResourceT $ AWS.send env request
   return ()
 
 handlers :: A.Value -> Handler DeribitReportResult

@@ -8,6 +8,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 
 module DeribitReports (app) where
@@ -38,6 +39,8 @@ import Network.HTTP.Types.Status (statusIsSuccessful)
 import Data.Maybe (fromMaybe)
 
 import Amazonka.S3.PutObject (putObject_contentType)
+import Data.Data (Typeable)
+import Control.Exception (Exception, throw)
 
 newtype DeribitClientId = DeribitClientId {getClientId :: BS.ByteString} deriving newtype (IsString, Show)
 newtype DeribitClientSecret = DeribitClientSecret {getClientSecret ::BS.ByteString} deriving newtype (IsString, Show)
@@ -73,13 +76,29 @@ authorizeWithCredentials deribitClientId deribitClientSecret publicURL = do
       Just tokenResponse -> return $ Just (BSC.pack $ accessToken tokenResponse, BSC.pack $ refreshToken tokenResponse)
       Nothing -> return Nothing
 
-data DeribitReportResult =
-  ReportContent T.Text
-  | ReportError T.Text
+data DeribitReportResult where
+  ReportContent :: T.Text -> DeribitReportResult
   deriving (Generic, ToJSON)
 
+data DeribitException
+  = AuthenticationFailed !T.Text
+  | MissingEnvironmentVariables !T.Text
+  | FailedDeribitAPI !T.Text
+  | BadRequest !T.Text
+  deriving (Show, Typeable)
+
+instance Exception DeribitException
+
+data DeribitReportEvent where
+  DeribitReportEvent :: {currencies :: [String]} -> DeribitReportEvent
+  deriving Generic
+instance A.FromJSON DeribitReportEvent
+
 handler :: A.Value -> IO DeribitReportResult
-handler _ = do
+handler jsonAst = 
+    case parseMaybe A.parseJSON jsonAst of
+        Nothing -> throw $ BadRequest "Missing field 'currencies'"
+        Just DeribitReportEvent { currencies } -> do
             deribitClientId <- lookupEnv "DERIBIT_CLIENT_ID"
             deribitClientSecret <- lookupEnv "DERIBIT_CLIENT_SECRET"
             deribitBucket <- fromMaybe "dev-deribit-positions" <$> lookupEnv "DERIBIT_BUCKET_POSITIONS"
@@ -90,9 +109,9 @@ handler _ = do
                     clientSecret = DeribitClientSecret $ BSC.pack deribitClientSecret'
                   credentials <- authorizeWithCredentials clientId clientSecret publicURL
                   case credentials of
-                    Nothing ->  return $ ReportError "authentication failed"
+                    Nothing ->  throw $ AuthenticationFailed "authentication failed"
                     Just (token, _) -> savePositions token privateURL "BTC" (T.pack bucket)
-                _ -> return $ ReportError "error: environment variables DERIBIT_CLIENT_ID, DERIBIT_CLIENT_SECRET and DERIBIT_BUCKET_POSITIONS are required"
+                _ -> throw $ MissingEnvironmentVariables "error: environment variables DERIBIT_CLIENT_ID, DERIBIT_CLIENT_SECRET and DERIBIT_BUCKET_POSITIONS are required"
 
     where
         hostName = "www.deribit.com"
@@ -131,10 +150,10 @@ savePositions token privateURL currencyCode bucket = do
               return $ ReportContent (TE.decodeUtf8 responseBody)
               )
             else
-              return $ ReportError $ "no result found in body: " <> TE.decodeUtf8 responseBody)
-          _ -> return $ ReportError $ "failed to parse body: " <> TE.decodeUtf8 responseBody
+              throw $ FailedDeribitAPI $ "no result found in body: " <> TE.decodeUtf8 responseBody)
+          _ -> throw $ FailedDeribitAPI $ "failed to parse body: " <> TE.decodeUtf8 responseBody
       else
-      return $ ReportError $ "failed to load positions: " <> TE.decodeUtf8 responseBody
+        throw $ FailedDeribitAPI $ "failed to load positions: " <> TE.decodeUtf8 responseBody
 
 writeToS3 :: S3.BucketName -> S3.ObjectKey -> AWS.RequestBody -> T.Text -> IO ()
 writeToS3 bucket filename json objectType = do
@@ -148,7 +167,7 @@ handlers :: A.Value -> Handler DeribitReportResult
 handlers = liftIO . handler
 
 type Api =
-  "endpoint"
+  "local"
     :> ReqBody '[JSON] A.Value
     :> Post '[JSON] DeribitReportResult
 

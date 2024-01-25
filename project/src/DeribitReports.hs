@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric  #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -11,7 +10,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 
-module DeribitReports (app) where
+module DeribitReports (handler, DeribitReportResult) where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -31,9 +30,6 @@ import Network.HTTP.Simple (parseRequest, getResponseBody, httpBS, setRequestHea
 import Data.Aeson ( ToJSON, withObject, (.:) )
 import Data.Aeson.Types ( parseMaybe, Parser )
 import System.Environment (lookupEnv)
-import Servant (Proxy(Proxy), (:>), JSON, Post, ReqBody)
-import Servant.Server (Application, serve, Handler)
-import Control.Monad.IO.Class (liftIO)
 import Data.String (IsString)
 import Network.HTTP.Types.Status (statusIsSuccessful)
 import Data.Maybe (fromMaybe)
@@ -162,14 +158,3 @@ writeToS3 bucket filename json objectType = do
     request = (S3.newPutObject bucket filename json) CL.& putObject_contentType CL.?~ objectType
   _ <- AWS.runResourceT $ AWS.send env request
   return ()
-
-handlers :: A.Value -> Handler DeribitReportResult
-handlers = liftIO . handler
-
-type Api =
-  "local"
-    :> ReqBody '[JSON] A.Value
-    :> Post '[JSON] DeribitReportResult
-
-app :: Application
-app = serve (Proxy :: Proxy Api) handlers

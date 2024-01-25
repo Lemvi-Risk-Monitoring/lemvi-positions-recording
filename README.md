@@ -82,7 +82,7 @@ cabal run deribit-local
 
 sudo rm -fr /tmp/http.log && sudo tcpdump -i any -w /tmp/http.log
 
-curl -X POST -H "Content-Type: application/json" -d '{"dummy":"dummy"}' http://localhost:8080/local
+curl -X POST -H "Content-Type: application/json" -d '{"currencies":["dummy"]}' http://localhost:8080/local
 
 
 sudo tcpdump -A -r /tmp/http.log tcp port 80

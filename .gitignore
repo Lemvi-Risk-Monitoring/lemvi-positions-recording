@@ -30,3 +30,4 @@ node_modules/
 .terraform.*.info
 out.json
 .deploy
+*.lock.hcl

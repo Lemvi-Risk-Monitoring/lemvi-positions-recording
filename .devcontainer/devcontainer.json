@@ -14,11 +14,14 @@
 		}
 	}
 	, "remoteUser": "haskell"
-	, "containerEnv": { 
-		"MY_VARIABLE": "${localEnv:MY_VARIABLE}"
+	, "containerEnv": {
+		"TF_VAR_deribit_client_id": "${localEnv:DERIBIT_CLIENT_ID}",
+		"TF_VAR_deribit_client_secret": "${localEnv:DERIBIT_CLIENT_SECRET}",
+		"TF_VAR_ib_flex_report_token": "${localEnv:IB_FLEX_REPORT_TOKEN}"
 	}
 	, "mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/haskell/.ssh,type=bind,readonly"
 	]
+	, "postCreateCommand": "bash .devcontainer/startup.sh"
 	, "postStartCommand": "cabal update && terraform -chdir=terraform init"
 }

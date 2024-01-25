@@ -43,7 +43,7 @@ cabal build
 ### Function deployment
 
 ```shell
-terraform -chdir=terraform apply -var "ib_flex_report_token=$IB_FLEX_REPORT_TOKEN"
+terraform -chdir=terraform apply
 ```
 
 ## Testing deployment

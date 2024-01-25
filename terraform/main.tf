@@ -32,7 +32,9 @@ module "lambda_function" {
   timeout = 60
   environment_variables = {
     "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
-    "DERIBIT_BUCKET_POSITIONS": "${var.aws_stage}-deribit-positions",
+    "DERIBIT_CLIENT_ID": var.deribit_client_id,
+    "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
+    "DERIBIT_BUCKET_POSITIONS": "${var.aws_stage}-deribit-positions"
   }
 }
 

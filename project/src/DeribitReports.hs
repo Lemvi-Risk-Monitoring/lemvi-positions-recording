@@ -6,7 +6,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Redundant bracket" #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 
@@ -105,7 +104,7 @@ handler jsonAst =
                     clientSecret = DeribitClientSecret $ BSC.pack deribitClientSecret'
                   credentials <- authorizeWithCredentials clientId clientSecret publicURL
                   case credentials of
-                    Nothing ->  throw $ AuthenticationFailed "authentication failed"
+                    Nothing ->  throw $ AuthenticationFailed "authentication with deribit failed"
                     Just (token, _) -> ReportContent <$> mapM (savePositions token privateURL (T.pack bucket)) currencies
                 _ -> throw $ MissingEnvironmentVariables "error: environment variables DERIBIT_CLIENT_ID, DERIBIT_CLIENT_SECRET and DERIBIT_BUCKET_POSITIONS are required"
 
@@ -155,6 +154,6 @@ writeToS3 :: S3.BucketName -> S3.ObjectKey -> AWS.RequestBody -> T.Text -> IO ()
 writeToS3 bucket filename json objectType = do
   env <- AWS.newEnv AWS.discover
   let
-    request = (S3.newPutObject bucket filename json) CL.& putObject_contentType CL.?~ objectType
+    request = S3.newPutObject bucket filename json CL.& putObject_contentType CL.?~ objectType
   _ <- AWS.runResourceT $ AWS.send env request
   return ()

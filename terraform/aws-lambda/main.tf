@@ -4,7 +4,7 @@ locals {
 
 resource "null_resource" "prepare_bootstrap" {
   triggers = {
-    script_hash = sha256("${local.deployment_staging}/${var.function_name}/bootstrap")
+    script_hash = sha256(var.exe_path)
   }
   provisioner "local-exec" {
     command = "mkdir -p ${local.deployment_staging}/${var.function_name} && cp ${var.exe_path} ${local.deployment_staging}/${var.function_name}/bootstrap && strip ${local.deployment_staging}/${var.function_name}/bootstrap"

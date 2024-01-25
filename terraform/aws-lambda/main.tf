@@ -3,6 +3,9 @@ locals {
 }
 
 resource "null_resource" "prepare_bootstrap" {
+  triggers = {
+    script_hash = sha256("${local.deployment_staging}/${var.function_name}/bootstrap")
+  }
   provisioner "local-exec" {
     command = "mkdir -p ${local.deployment_staging}/${var.function_name} && cp ${var.exe_path} ${local.deployment_staging}/${var.function_name}/bootstrap && strip ${local.deployment_staging}/${var.function_name}/bootstrap"
   }
@@ -29,6 +32,10 @@ resource "aws_lambda_function" "lambda_function" {
   environment {
     variables = var.environment_variables
   }
+
+  depends_on = [
+    data.archive_file.lambda_package
+  ]
 }
 
 # IAM

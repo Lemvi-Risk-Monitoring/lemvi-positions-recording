@@ -73,7 +73,7 @@ authorizeWithCredentials deribitClientId deribitClientSecret publicURL = do
       Nothing -> return Nothing
 
 data DeribitReportResult where
-  ReportContent :: T.Text -> DeribitReportResult
+  ReportContent :: [T.Text] -> DeribitReportResult
   deriving (Generic, ToJSON)
 
 data DeribitException
@@ -86,12 +86,12 @@ data DeribitException
 instance Exception DeribitException
 
 data DeribitReportEvent where
-  DeribitReportEvent :: {currencies :: [String]} -> DeribitReportEvent
+  DeribitReportEvent :: {currencies :: [T.Text]} -> DeribitReportEvent
   deriving Generic
 instance A.FromJSON DeribitReportEvent
 
 handler :: A.Value -> IO DeribitReportResult
-handler jsonAst = 
+handler jsonAst =
     case parseMaybe A.parseJSON jsonAst of
         Nothing -> throw $ BadRequest "Missing field 'currencies'"
         Just DeribitReportEvent { currencies } -> do
@@ -106,7 +106,7 @@ handler jsonAst =
                   credentials <- authorizeWithCredentials clientId clientSecret publicURL
                   case credentials of
                     Nothing ->  throw $ AuthenticationFailed "authentication failed"
-                    Just (token, _) -> savePositions token privateURL "BTC" (T.pack bucket)
+                    Just (token, _) -> ReportContent <$> mapM (savePositions token privateURL (T.pack bucket)) currencies
                 _ -> throw $ MissingEnvironmentVariables "error: environment variables DERIBIT_CLIENT_ID, DERIBIT_CLIENT_SECRET and DERIBIT_BUCKET_POSITIONS are required"
 
     where
@@ -115,8 +115,8 @@ handler jsonAst =
         publicURL = deribitEndpointV2 <> "/public"
         privateURL = deribitEndpointV2 <> "/private"
 
-savePositions :: BS.ByteString -> String -> T.Text -> T.Text -> IO DeribitReportResult
-savePositions token privateURL currencyCode bucket = do
+savePositions :: BS.ByteString -> String -> T.Text -> T.Text -> IO T.Text
+savePositions token privateURL bucket currencyCode = do
     (year, month, day) <- Helper.today
     request <- parseRequest $ privateURL <> "/get_positions"
     let
@@ -143,7 +143,7 @@ savePositions token privateURL currencyCode bucket = do
             if KM.member "result" json then (do
               let
               writeToS3 (S3.BucketName bucket) (S3.ObjectKey (path <> "/" <> filename)) (AWS.toBody responseBody) "application/json"
-              return $ ReportContent (TE.decodeUtf8 responseBody)
+              return $ TE.decodeUtf8 responseBody
               )
             else
               throw $ FailedDeribitAPI $ "no result found in body: " <> TE.decodeUtf8 responseBody)

@@ -1,4 +1,9 @@
 module Main (main) where
 
+import Test.Hspec
+
+import qualified HelperSpec
+
 main :: IO ()
-main = putStrLn "Test suite not yet implemented."
+main = hspec $ do
+  describe "Helper tests" HelperSpec.spec

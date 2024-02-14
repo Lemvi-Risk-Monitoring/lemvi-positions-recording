@@ -1,141 +1,79 @@
-variable aws_lambda_function_name {
-  type = string
-}
-
-variable aws_region {
-  type = string
-}
-
-variable aws_stage {
-  type = string
-}
-
-provider aws {
+provider "aws" {
   region = var.aws_region
 }
 
 locals {
-    lambda_exe = "${path.cwd}/dist-newstyle/build/x86_64-linux/ghc-9.4.8/lemvi-positions-recording-0.1.0.0/x/aws-app/build/aws-app/aws-app"
+  project_name_version       = "lemvi-positions-recording-0.1.0.0"
+  ghc_dist_path              = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
+  echo_lambda_dir_name       = "echo-app"
+  ibrokers_app_dir_name      = "ibrokers-app"
+  deribit_app_dir_name       = "deribit-app"
+  dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
+  exe_path_echo_lambda       = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
+  exe_path_ibrokers_app      = "${local.dist_path}/${local.ibrokers_app_dir_name}/build/${local.ibrokers_app_dir_name}/${local.ibrokers_app_dir_name}"
+  exe_path_deribit_app       = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
+
+  lambda_functions = {
+      "${var.aws_stage}-echo-lambda"       = local.exe_path_echo_lambda,
+      "${var.aws_stage}-ibrokers-lambda"   = local.exe_path_ibrokers_app,
+      "${var.aws_stage}-deribit-lambda"    = local.exe_path_deribit_app,
+  }
+  
+  ibrokers_bucket_name = "${var.aws_stage}-ibrokers-positions"
+  deribit_bucket_name = "${var.aws_stage}-deribit-positions"
 }
 
-resource null_resource copy_file {
-  provisioner "local-exec" {
-    command = "cp ${local.lambda_exe} /tmp/bootstrap"
+module "lambda_function" {
+  for_each = local.lambda_functions
+  source = "./aws-lambda"
+
+  function_name = each.key
+  exe_path = each.value
+  timeout = 60
+  environment_variables = {
+    "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
+    "DERIBIT_CLIENT_ID": var.deribit_client_id,
+    "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
+    "DERIBIT_BUCKET_POSITIONS": "${var.aws_stage}-deribit-positions"
   }
 }
 
-data archive_file lambda_package {
-  type        = "zip"
-  output_path = "/tmp/bootstrap.zip"
-  source_file = "/tmp/bootstrap"
-  depends_on = [
-    resource.null_resource.copy_file
-  ]
+module "gateway_proxy_integration" {
+  source = "./gateway-proxy-integration"
+
+  api_description      = "HAL API Gateway"
+  api_url_path         = "greet"
+  function_name        = "${var.aws_stage}-echo-lambda"
+  function_invoke_arn  = module.lambda_function["${var.aws_stage}-echo-lambda"].invoke_arn
+  aws_stage            = var.aws_stage
 }
 
-resource aws_lambda_function hal_lambda {
-  filename = data.archive_file.lambda_package.output_path
-  function_name = var.aws_lambda_function_name
-  role = aws_iam_role.lambda_role.arn
-  handler = "handler"
-  runtime = "provided.al2023"
-  source_code_hash = data.archive_file.lambda_package.output_base64sha256
+resource "aws_s3_bucket" "ibrokers_bucket" {
+  bucket = local.ibrokers_bucket_name
 }
 
-# IAM
-data aws_iam_policy_document assume_role_lambda {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-
-    actions = ["sts:AssumeRole"]
-  }
+resource "aws_s3_bucket" "deribit_bucket" {
+  bucket = local.deribit_bucket_name
 }
 
-resource aws_iam_role lambda_role {
-  name = "lambda-exec"
-  assume_role_policy = data.aws_iam_policy_document.assume_role_lambda.json
+resource "aws_cloudwatch_event_rule" "schedule_snapshot_positions" {
+  name        = "schedule-snapshot-positions"
+  description = "triggering lambda every day at 8AM"
+  schedule_expression = "cron(0 8 * * ? *)"
 }
 
-resource aws_api_gateway_rest_api hal_api {
-  name = "api-lambda-${var.aws_lambda_function_name}"
-  description = "HAL API Gateway"
-
-  endpoint_configuration {
-    types = ["REGIONAL"]
-  }
+resource "aws_cloudwatch_event_target" "cron_deritbit_positions" {
+  arn   = module.lambda_function["${var.aws_stage}-deribit-lambda"].arn
+  rule  = aws_cloudwatch_event_rule.schedule_snapshot_positions.name
+  input = jsonencode({
+    currencies = ["BTC", "ETH", "USDC", "USDT", "EURR"]
+  })
 }
 
-resource aws_lambda_permission api_gateway_invoke {
-  statement_id  = "AllowExecutionFromAPIGateway"
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.hal_lambda.function_name
-  principal     = "apigateway.amazonaws.com"
-  # DANGER ZONE: USE FULL * permissions, otherwise getting error
-  # "Execution failed due to configuration error: Invalid permissions on Lambda function"
-  source_arn = "${aws_api_gateway_rest_api.hal_api.execution_arn}/*/*"
-  #source_arn = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:${aws_api_gateway_rest_api.hal_api.id}/*/*" 
-}
-
-resource aws_api_gateway_resource root {
-  rest_api_id = aws_api_gateway_rest_api.hal_api.id
-  parent_id = aws_api_gateway_rest_api.hal_api.root_resource_id
-  path_part = "greet"
-}
-
-resource aws_api_gateway_method proxy {
-  rest_api_id = aws_api_gateway_rest_api.hal_api.id
-  resource_id = aws_api_gateway_resource.root.id
-  http_method = "ANY"
-  authorization = "NONE"
-}
-
-resource aws_api_gateway_integration lambda_integration {
-  rest_api_id = aws_api_gateway_rest_api.hal_api.id
-  resource_id = aws_api_gateway_resource.root.id
-  http_method = aws_api_gateway_method.proxy.http_method
-  uri = aws_lambda_function.hal_lambda.invoke_arn
-  integration_http_method = "POST"
-  type = "AWS_PROXY"
-}
-
-resource aws_api_gateway_method_response proxy {
-  rest_api_id = aws_api_gateway_rest_api.hal_api.id
-  resource_id = aws_api_gateway_resource.root.id
-  http_method = aws_api_gateway_method.proxy.http_method
-  status_code = "200"
-  response_models = {"application/json": "Empty" }
-}
-
-resource aws_api_gateway_integration_response proxy {
-  rest_api_id = aws_api_gateway_rest_api.hal_api.id
-  resource_id = aws_api_gateway_resource.root.id
-  http_method = aws_api_gateway_method.proxy.http_method
-  status_code = aws_api_gateway_method_response.proxy.status_code
-
-  depends_on = [
-    aws_api_gateway_method.proxy,
-    aws_api_gateway_integration.lambda_integration
-  ]
-}
-
-resource aws_api_gateway_deployment deployment {
-  depends_on = [
-    aws_api_gateway_integration.lambda_integration
-  ]
-
-  rest_api_id = aws_api_gateway_rest_api.hal_api.id
-  stage_name = var.aws_stage
-}
-
-output rest_api_id {
-  value = aws_api_gateway_rest_api.hal_api.id
-}
-
-output ressource_id {
-  value = aws_api_gateway_resource.root.id
+  function_name = "${var.aws_stage}-deribit-lambda"
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.schedule_snapshot_positions.arn
 }

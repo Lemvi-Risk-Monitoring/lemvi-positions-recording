@@ -29,3 +29,6 @@ node_modules/
 *.tfstate
 .terraform.*.info
 .DS_Store
+out.json
+.deploy
+*.lock.hcl

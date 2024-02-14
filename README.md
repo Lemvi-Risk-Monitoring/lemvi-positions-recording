@@ -57,9 +57,9 @@ aws apigateway test-invoke-method \
 ```
 
 ```shell
-aws aws lambda invoke \
-    --function-name ibrokers-app \
-    --payload '{ "ib_flex_query_id": "906041" }' \
+aws lambda invoke \
+    --function-name test-ibrokers-lambda \
+    --payload '{ "flexQueryId": "906041" }' \
     --cli-binary-format raw-in-base64-out \
     out.log
 

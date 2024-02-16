@@ -26,6 +26,10 @@ Environment variables for `terraform`:
 export TF_VAR_aws_stage=test
 export TF_VAR_aws_region=$(aws configure get region)
 export TF_VAR_aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')
+export TF_VAR_aws_region=$AWS_DEFAULT_REGION
+export TF_VAR_deribit_client_id=$DERIBIT_CLIENT_ID
+export TF_VAR_deribit_client_secret=$DERIBIT_CLIENT_SECRET
+export TF_VAR_ib_flex_report_token=$IB_FLEX_REPORT_TOKEN
 ```
 
 AWS settings can be overriden using:

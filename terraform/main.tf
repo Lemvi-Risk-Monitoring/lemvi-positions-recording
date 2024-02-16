@@ -6,16 +6,17 @@ locals {
   project_name_version       = "lemvi-positions-recording-0.1.0.0"
   ghc_dist_path              = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
   echo_lambda_dir_name       = "echo-app"
-  ibrokers_app_dir_name      = "ibrokers-app"
+  ibrokers_request_app_dir_name      = "ibrokers-request-app"
   deribit_app_dir_name       = "deribit-app"
+  queue_ibrokers_report      = "ibrokers-reporting"
   dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
   exe_path_echo_lambda       = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
-  exe_path_ibrokers_app      = "${local.dist_path}/${local.ibrokers_app_dir_name}/build/${local.ibrokers_app_dir_name}/${local.ibrokers_app_dir_name}"
+  exe_path_ibrokers_request_app      = "${local.dist_path}/${local.ibrokers_request_app_dir_name}/build/${local.ibrokers_request_app_dir_name}/${local.ibrokers_request_app_dir_name}"
   exe_path_deribit_app       = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
 
   lambda_functions = {
       "${var.aws_stage}-echo-lambda"       = local.exe_path_echo_lambda,
-      "${var.aws_stage}-ibrokers-lambda"   = local.exe_path_ibrokers_app,
+      "${var.aws_stage}-ibrokers-request-lambda"   = local.exe_path_ibrokers_request_app,
       "${var.aws_stage}-deribit-lambda"    = local.exe_path_deribit_app,
   }
   
@@ -34,7 +35,8 @@ module "lambda_function" {
     "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
     "DERIBIT_CLIENT_ID": var.deribit_client_id,
     "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
-    "DERIBIT_BUCKET_POSITIONS": "${var.aws_stage}-deribit-positions"
+    "DERIBIT_BUCKET_POSITIONS": "${var.aws_stage}-deribit-positions",
+    "IBROKERS_QUEUE_REPORT": aws_sqs_queue.queue_ibrokers_report.name
   }
 }
 
@@ -57,7 +59,7 @@ resource "aws_s3_bucket" "deribit_bucket" {
 }
 
 resource "aws_cloudwatch_event_rule" "schedule_snapshot_positions" {
-  name        = "schedule-snapshot-positions"
+  name        = "${var.aws_stage}-schedule-snapshot-positions"
   description = "triggering lambda every day at 8AM"
   schedule_expression = "cron(0 8 * * ? *)"
 }
@@ -76,4 +78,10 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   function_name = "${var.aws_stage}-deribit-lambda"
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.schedule_snapshot_positions.arn
+}
+
+resource "aws_sqs_queue" "queue_ibrokers_report" {
+      name = "${var.aws_stage}-${local.queue_ibrokers_report}"
+      visibility_timeout_seconds = 60
+      message_retention_seconds = 3600
 }

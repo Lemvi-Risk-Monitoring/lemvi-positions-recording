@@ -1,6 +1,6 @@
 
 resource "aws_api_gateway_rest_api" "rest_api" {
-  name        = "api-lambda-${var.function_name}"
+  name        = "${var.aws_stage}-api-lambda-${var.function_name}"
   description = var.api_description
 
   endpoint_configuration {

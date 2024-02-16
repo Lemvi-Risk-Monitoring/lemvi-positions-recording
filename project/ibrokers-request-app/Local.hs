@@ -16,9 +16,9 @@ import qualified IBrokersReports
 type Api =
   "local"
     S.:> S.ReqBody '[S.JSON] A.Value
-    S.:> S.Post '[S.JSON] IBrokersReports.FlexReportResult
+    S.:> S.Post '[S.JSON] IBrokersReports.ReportRequestResponse
 
-handlers :: A.Value -> S.Handler IBrokersReports.FlexReportResult
+handlers :: A.Value -> S.Handler IBrokersReports.ReportRequestResponse
 handlers = liftIO . IBrokersReports.handler
 
 app :: SRV.Application

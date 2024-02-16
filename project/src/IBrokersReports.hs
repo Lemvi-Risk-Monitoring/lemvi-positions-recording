@@ -4,11 +4,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds #-}
 
-module IBrokersReports (handler, FlexReportResult) where
+module IBrokersReports (handler, FlexReportResult, ReportRequestResponse) where
 
-import Network.HTTP.Simple
-    ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
-
+import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 import qualified Data.ByteString.Char8 as BS
 
 import Text.XML.Light
@@ -20,7 +18,8 @@ import Text.XML.Light
 
 import Data.Map.Strict (fromList)
 import Data.Aeson.Text (encodeToLazyText)
-import Data.Text.Lazy ( Text, pack, toStrict )
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text as T
 import Control.Exception (throw, Exception)
 import Data.Data (Typeable)
 import Network.HTTP.Conduit ( responseTimeoutMicro )
@@ -29,7 +28,35 @@ import Data.Aeson ( ToJSON, FromJSON, Value, parseJSON )
 import Data.Aeson.Types (parseMaybe)
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
-import Data.Text (unpack)
+
+import qualified PostSQS
+
+
+data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String }
+  deriving Generic
+instance ToJSON ReportRequestResponse
+
+data ReportRequestResponse = ReportRequestResponse ReportRequestResult | ReportRequestError String
+  deriving Generic
+instance ToJSON ReportRequestResult
+
+createRequestIBFlexReport :: String -> String -> String -> IO ReportRequestResponse
+createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
+    let ibFlexURL' = ibFlexURL ++ "?t=" ++ ibToken ++ "&q=" ++ ibQueryId ++ "&v=3"
+    request <- parseRequest ibFlexURL'
+    let request' = setRequestResponseTimeout (responseTimeoutMicro 120000000) request
+    ibResponse <- httpBS request'
+
+    let
+        response = BS.unpack (getResponseBody ibResponse)
+        ibReportLocation = parseXMLDoc response
+        ibReportReferenceCode = findReferenceCode ibReportLocation
+        ibReportBaseUrl = findURL ibReportLocation
+    case (ibReportReferenceCode, ibReportBaseUrl) of
+        (Just refCode, Just url) -> do
+            return $ ReportRequestResponse $ ReportRequestResult { referenceCode = refCode, callbackURL = url }
+        _ -> return $ ReportRequestError ("failed to call " ++ ibFlexURL' ++ ", unable to parse response: " ++ response)
+
 
 loadIBFlexReport :: String -> String -> String -> IO (Maybe String)
 loadIBFlexReport ibFlexURL ibToken ibQueryId = do
@@ -77,15 +104,15 @@ checkReportError tree = case (findErrorCode tree, findErrorMessage tree) of
     (Just errorCode, Just errorMessage) -> Just (errorCode, errorMessage)
     _ -> Nothing
 
-makeIBRecords :: Element -> Text
+makeIBRecords :: Element -> LT.Text
 makeIBRecords reportTree = encodeToLazyText [fromList (attrToPair a) | a <- findElements (unqual "OpenPosition") reportTree]
    where
        attrToPair e = [(qName n, v) | Attr n v <- elAttribs e]
 
 data IBrokersException
-  = LoadingFailed !Text
-  | ReportServerError !Text
-  | EnvironmentVariableMissing !Text
+  = LoadingFailed !LT.Text
+  | ReportServerError !LT.Text
+  | EnvironmentVariableMissing !LT.Text
   deriving (Show, Typeable)
 
 instance Exception IBrokersException
@@ -96,7 +123,7 @@ fetchFlexReport ibFlexURL flexQueryId flexReportToken = case flexReportToken of
             maybeTree <- loadIBRecords ibFlexURL token flexQueryId
             case maybeTree of
                 Just tree -> case checkReportError tree of
-                    Just (errorCode, errorMessage) -> throw (ReportServerError (pack msg))
+                    Just (errorCode, errorMessage) -> throw (ReportServerError (LT.pack msg))
                         where msg = "report not ready: " ++ errorMessage ++ " (code " ++ show errorCode ++ ")"
                     Nothing -> return tree
                 Nothing -> throw (LoadingFailed "failed to load data")
@@ -112,15 +139,23 @@ data FlexReportEvent where
   deriving Generic
 instance FromJSON FlexReportEvent
 
-handler :: Value -> IO FlexReportResult
+handler :: Value -> IO ReportRequestResponse
 handler jsonAst =
     case parseMaybe parseJSON jsonAst of
-        Nothing -> return FlexReportResult { message = "Missing flexQueryId" }
+        Nothing -> return $ ReportRequestError "missing flexQueryId in request"
         Just FlexReportEvent { flexQueryId } -> do
-            flexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
-            ibFlexURLEnv <- lookupEnv "IB_FLEX_URL"
-            let ibFlexURL = fromMaybe ibFlexUrlDefault ibFlexURLEnv
-            reportTree <- fetchFlexReport ibFlexURL flexQueryId flexReportToken
-            return $ FlexReportResult { message = (unpack . toStrict . makeIBRecords) reportTree }
+            maybeFlexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
+            case maybeFlexReportToken of
+                Nothing -> return $ ReportRequestError "missing env variable IB_FLEX_REPORT_TOKEN"
+                Just flexReportToken -> do
+                    ibFlexURLEnv <- lookupEnv "IB_FLEX_URL"
+                    let ibFlexURL = fromMaybe ibFlexUrlDefault ibFlexURLEnv
+                    rrr <- createRequestIBFlexReport ibFlexURL flexQueryId flexReportToken
+                    maybeNotificationQueue <- lookupEnv "IBROKERS_QUEUE_REPORT"
+                    case maybeNotificationQueue of
+                        Nothing -> return rrr
+                        Just queueName -> do
+                            PostSQS.sendMessage (T.pack queueName) ((LT.toStrict . encodeToLazyText) rrr)
+                            return rrr
     where
         ibFlexUrlDefault = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"

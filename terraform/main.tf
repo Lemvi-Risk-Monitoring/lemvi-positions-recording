@@ -14,20 +14,23 @@ locals {
   }
   ws = local.workspaces[terraform.workspace]
 
+  queue_ibrokers_report      = "ibrokers-reporting"
   project_name_version       = "lemvi-positions-recording-0.1.0.0"
   ghc_dist_path              = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
   echo_lambda_dir_name       = "echo-app"
   ibrokers_request_app_dir_name      = "ibrokers-request-app"
+  ibrokers_fetch_app_dir_name      = "ibrokers-fetch-app"
   deribit_app_dir_name       = "deribit-app"
-  queue_ibrokers_report      = "ibrokers-reporting"
   dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
   exe_path_echo_lambda       = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
   exe_path_ibrokers_request_app      = "${local.dist_path}/${local.ibrokers_request_app_dir_name}/build/${local.ibrokers_request_app_dir_name}/${local.ibrokers_request_app_dir_name}"
+  exe_path_ibrokers_fetch_app      = "${local.dist_path}/${local.ibrokers_fetch_app_dir_name}/build/${local.ibrokers_fetch_app_dir_name}/${local.ibrokers_fetch_app_dir_name}"
   exe_path_deribit_app       = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
 
   lambda_functions = {
       "echo-lambda"       = local.exe_path_echo_lambda,
       "ibrokers-request-lambda"   = local.exe_path_ibrokers_request_app,
+      "ibrokers-fetch-lambda"   = local.exe_path_ibrokers_fetch_app,
       "deribit-lambda"    = local.exe_path_deribit_app,
   }
   
@@ -47,6 +50,7 @@ module "lambda_function" {
     "DERIBIT_CLIENT_ID": var.deribit_client_id,
     "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
     "DERIBIT_BUCKET_POSITIONS": aws_s3_bucket.deribit_bucket.bucket,
+    "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket,
     "IBROKERS_QUEUE_REPORT_URL": aws_sqs_queue.queue_ibrokers_report.url
   }
 }
@@ -95,6 +99,16 @@ resource "aws_sqs_queue" "queue_ibrokers_report" {
       name = "${local.ws.aws_stage}-${local.queue_ibrokers_report}"
       visibility_timeout_seconds = 60
       message_retention_seconds = 3600
+}
+
+resource "aws_lambda_event_source_mapping" "queue_trigger_ibrokers_report" {
+  batch_size        = 1
+  scaling_config {
+    maximum_concurrency = 2
+  }
+  event_source_arn  = aws_sqs_queue.queue_ibrokers_report.arn
+  function_name     = module.lambda_function["ibrokers-fetch-lambda"].arn
+  enabled           = true
 }
 
 module "lambda_posting" {

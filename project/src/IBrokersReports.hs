@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds #-}
 
-module IBrokersReports (handler, FlexReportResult, ReportRequestResponse) where
+module IBrokersReports (handleRequest, handleFetch, ReportRequestResponse, ReportFetchResponse) where
 
 import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 import qualified Data.ByteString.Char8 as BS
@@ -34,11 +34,15 @@ import qualified PostSQS
 
 data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String }
   deriving Generic
-instance ToJSON ReportRequestResponse
+instance ToJSON ReportRequestResult
 
 data ReportRequestResponse = ReportRequestResponse ReportRequestResult | ReportRequestError String
   deriving Generic
-instance ToJSON ReportRequestResult
+instance ToJSON ReportRequestResponse
+
+data ReportFetchResponse = ReportFetchError String
+  deriving Generic
+instance ToJSON ReportFetchResponse
 
 createRequestIBFlexReport :: String -> String -> String -> IO ReportRequestResponse
 createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
@@ -129,18 +133,13 @@ fetchFlexReport ibFlexURL flexQueryId flexReportToken = case flexReportToken of
                 Nothing -> throw (LoadingFailed "failed to load data")
         Nothing -> throw (EnvironmentVariableMissing "required environment variable IB_FLEX_REPORT_TOKEN is missing")
 
-data FlexReportResult where
-  FlexReportResult :: {message :: String} -> FlexReportResult
-  deriving Generic
-instance ToJSON FlexReportResult
-
 data FlexReportEvent where
   FlexReportEvent :: {flexQueryId :: String} -> FlexReportEvent
   deriving Generic
 instance FromJSON FlexReportEvent
 
-handler :: Value -> IO ReportRequestResponse
-handler jsonAst =
+handleRequest :: Value -> IO ReportRequestResponse
+handleRequest jsonAst =
     case parseMaybe parseJSON jsonAst of
         Nothing -> return $ ReportRequestError "missing flexQueryId in request"
         Just FlexReportEvent { flexQueryId } -> do
@@ -159,3 +158,8 @@ handler jsonAst =
                             return rrr
     where
         ibFlexUrlDefault = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
+
+handleFetch :: Value -> IO ReportFetchResponse
+handleFetch jsonAst = do
+    putStrLn "not implemented"
+    return $ ReportFetchError "not implemented"

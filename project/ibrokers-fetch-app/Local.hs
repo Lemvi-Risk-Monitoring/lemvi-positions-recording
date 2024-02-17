@@ -16,10 +16,10 @@ import qualified IBrokersReports
 type Api =
   "local"
     S.:> S.ReqBody '[S.JSON] A.Value
-    S.:> S.Post '[S.JSON] IBrokersReports.ReportRequestResponse
+    S.:> S.Post '[S.JSON] IBrokersReports.ReportFetchResponse
 
-handlers :: A.Value -> S.Handler IBrokersReports.ReportRequestResponse
-handlers = liftIO . IBrokersReports.handleRequest
+handlers :: A.Value -> S.Handler IBrokersReports.ReportFetchResponse
+handlers = liftIO . IBrokersReports.handleFetch
 
 app :: SRV.Application
 app = S.serve (Proxy :: Proxy Api) handlers

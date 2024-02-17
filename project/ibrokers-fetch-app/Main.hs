@@ -7,4 +7,4 @@ import AWS.Lambda.Runtime (mRuntime)
 import qualified IBrokersReports
 
 main :: IO ()
-main = mRuntime IBrokersReports.handleRequest
+main = mRuntime IBrokersReports.handleFetch

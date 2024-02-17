@@ -47,7 +47,7 @@ module "lambda_function" {
     "DERIBIT_CLIENT_ID": var.deribit_client_id,
     "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
     "DERIBIT_BUCKET_POSITIONS": aws_s3_bucket.deribit_bucket.bucket,
-    "IBROKERS_QUEUE_REPORT": aws_sqs_queue.queue_ibrokers_report.name
+    "IBROKERS_QUEUE_REPORT_URL": aws_sqs_queue.queue_ibrokers_report.url
   }
 }
 

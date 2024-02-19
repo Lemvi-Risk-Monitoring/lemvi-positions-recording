@@ -98,7 +98,8 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 resource "aws_sqs_queue" "queue_ibrokers_report" {
       name = "${local.ws.aws_stage}-${local.queue_ibrokers_report}"
       visibility_timeout_seconds = 60
-      message_retention_seconds = 3600
+      delay_seconds              = 30
+      message_retention_seconds  = 3600
 }
 
 resource "aws_lambda_event_source_mapping" "queue_trigger_ibrokers_report" {

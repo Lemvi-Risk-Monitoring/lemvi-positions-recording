@@ -28,11 +28,13 @@ import Data.Aeson ( ToJSON, FromJSON, Value, parseJSON )
 import Data.Aeson.Types (parseMaybe)
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
+import qualified System.Log.FastLogger as LOG
 
+import qualified System.IO as SIO
 import qualified PostSQS
 
 
-data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String }
+data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String, countRetries :: Int }
   deriving Generic
 instance ToJSON ReportRequestResult
 
@@ -58,33 +60,22 @@ createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
         ibReportBaseUrl = findURL ibReportLocation
     case (ibReportReferenceCode, ibReportBaseUrl) of
         (Just refCode, Just url) -> do
-            return $ ReportRequestResponse $ ReportRequestResult { referenceCode = refCode, callbackURL = url }
+            return $ ReportRequestResponse $ ReportRequestResult { referenceCode = refCode, callbackURL = url, countRetries = 5 }
         _ -> return $ ReportRequestError ("failed to call " <> ibFlexURL' <> ", unable to parse response: " <> response)
 
 
-loadIBFlexReport :: String -> String -> String -> IO (Maybe String)
-loadIBFlexReport ibFlexURL ibToken ibQueryId = do
-    let ibFlexURL' = ibFlexURL ++ "?t=" <> ibToken <> "&q=" <> ibQueryId <> "&v=3"
-    request <- parseRequest ibFlexURL'
-    let request' = setRequestResponseTimeout (responseTimeoutMicro 120000000) request
-    ibResponse <- httpBS request'
+loadIBFlexReport :: String -> String -> String -> IO String
+loadIBFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
+    let ibReportURL  = ibReportBaseUrl <> "?t=" <> ibToken <> "&q=" <> ibReportReferenceCode <> "&v=3"
+    reportRequest <- parseRequest ibReportURL
+    ibReport <- httpBS reportRequest
+    return $ BS.unpack (getResponseBody ibReport)
 
-    let ibReportLocation = parseXMLDoc $ BS.unpack (getResponseBody ibResponse)
-        ibReportReferenceCode = findReferenceCode ibReportLocation
-        ibReportBaseUrl = findURL ibReportLocation
-    case (ibReportReferenceCode, ibReportBaseUrl) of
-        (Just refCode, Just url) -> do
-            let ibReportURL  = url <> "?t=" <> ibToken <> "&q=" <> refCode <> "&v=3"
-            reportRequest <- parseRequest ibReportURL
-            ibReport <- httpBS reportRequest
-            return $ Just $ BS.unpack (getResponseBody ibReport)
-
-        _ -> return Nothing
 
 loadIBRecords :: String -> String -> String -> IO (Maybe Element)
-loadIBRecords ibFlexURL ibToken ibQueryId = do
-    report <- loadIBFlexReport ibFlexURL ibToken ibQueryId
-    return $ parseXMLDoc =<< report
+loadIBRecords ibReportBaseUrl ibToken ibReportReferenceCode = do
+    report <- loadIBFlexReport ibReportBaseUrl ibToken ibReportReferenceCode
+    return $ parseXMLDoc report
 
 findReferenceCode :: Maybe Element -> Maybe String
 findReferenceCode (Just tree) = strContent <$> findElement (unqual "ReferenceCode") tree
@@ -121,17 +112,15 @@ data IBrokersException
 
 instance Exception IBrokersException
 
-fetchFlexReport :: String -> String -> Maybe String -> IO Element
-fetchFlexReport ibFlexURL flexQueryId flexReportToken = case flexReportToken of
-        Just token -> do
-            maybeTree <- loadIBRecords ibFlexURL token flexQueryId
-            case maybeTree of
-                Just tree -> case checkReportError tree of
-                    Just (errorCode, errorMessage) -> throw (ReportServerError (LT.pack msg))
-                        where msg = "report not ready: " <> errorMessage <> " (code " <> show errorCode <> ")"
-                    Nothing -> return tree
-                Nothing -> throw (LoadingFailed "failed to load data")
-        Nothing -> throw (EnvironmentVariableMissing "required environment variable IB_FLEX_REPORT_TOKEN is missing")
+fetchFlexReport :: String -> String -> String -> IO Element
+fetchFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
+    maybeTree <- loadIBRecords ibReportBaseUrl ibToken ibReportReferenceCode
+    case maybeTree of
+        Just tree -> case checkReportError tree of
+            Just (errorCode, errorMessage) -> throw (ReportServerError (LT.pack msg))
+                where msg = "report not ready: " <> errorMessage <> " (code " <> show errorCode <> ")"
+            Nothing -> return tree
+        Nothing -> throw (LoadingFailed "failed to load data")
 
 data FlexReportEvent where
   FlexReportEvent :: {flexQueryId :: String} -> FlexReportEvent
@@ -139,8 +128,8 @@ data FlexReportEvent where
 instance FromJSON FlexReportEvent
 
 handleRequest :: Value -> IO ReportRequestResponse
-handleRequest jsonAst =
-    case parseMaybe parseJSON jsonAst of
+handleRequest flexReportEvent =
+    case parseMaybe parseJSON flexReportEvent of
         Nothing -> return $ ReportRequestError "missing flexQueryId in request"
         Just FlexReportEvent { flexQueryId } -> do
             maybeFlexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
@@ -160,6 +149,12 @@ handleRequest jsonAst =
         ibFlexUrlDefault = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
 
 handleFetch :: Value -> IO ReportFetchResponse
-handleFetch jsonAst = do
-    putStrLn "not implemented"
+handleFetch flexReportReference = do
+    loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
+    logMessage loggerSet ((LT.unpack . encodeToLazyText) flexReportReference)
+    -- logMessage loggerSet "not implemented"
     return $ ReportFetchError "not implemented"
+
+logMessage :: LOG.LoggerSet -> String -> IO ()
+logMessage loggerSet msg = do
+    LOG.pushLogStrLn loggerSet . LOG.toLogStr $ msg

@@ -6,8 +6,9 @@ import Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.Aeson as A
 import qualified Data.Text as T
 import qualified AWSEvent (RecordSet(..), Record(..))
-import qualified IBrokersReports (CallbackBody(..), ReportRequestResult(..))
-
+import qualified IBrokersReports (CallbackBody(..), ReportRequestResult(..), findReportDate)
+import System.Directory (canonicalizePath)
+import Text.XML.Light (parseXMLDoc)
 
 spec :: Spec
 spec = do
@@ -28,5 +29,17 @@ spec = do
     it "parses the body" $ do
       let
         body = BSC.pack "{\"contents\":{\"callbackURL\":\"https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement\",\"countRetries\":5,\"referenceCode\":\"4455189702\"},\"tag\":\"ReportRequestResponse\"}"
-        Right parsed = A.eitherDecode body :: Either String IBrokersReports.CallbackBody
-      IBrokersReports.callbackURL (IBrokersReports.contents parsed) `shouldBe` "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
+      case (A.eitherDecode body :: Either String IBrokersReports.CallbackBody) of 
+          Right parsed -> IBrokersReports.callbackURL (IBrokersReports.contents parsed) `shouldBe` "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
+          Left failed -> expectationFailure $ "failed to parse JSON: " <> failed
+
+    it "extracts report date" $ do
+      let filePath = "project/test/resources/ib-report-sample.xml"
+      absolutePath <- canonicalizePath filePath
+      xmlString <- BSC.readFile absolutePath
+      case parseXMLDoc xmlString of
+        Nothing -> expectationFailure $ "failed to parse test XML file: " <> absolutePath
+        Just xml -> do
+          print $ show xml
+          let maybeReportDate = IBrokersReports.findReportDate xml
+          maybeReportDate `shouldBe` Just "20240223"

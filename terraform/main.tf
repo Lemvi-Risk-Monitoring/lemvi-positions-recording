@@ -103,28 +103,6 @@ resource "aws_s3_bucket" "deribit_bucket" {
   bucket = local.deribit_bucket_name
 }
 
-resource "aws_cloudwatch_event_rule" "schedule_snapshot_positions" {
-  name        = "${local.ws.aws_stage}-schedule-snapshot-positions"
-  description = "triggering lambda every day at 8AM"
-  schedule_expression = "cron(0 8 * * ? *)"
-}
-
-resource "aws_cloudwatch_event_target" "cron_deritbit_positions" {
-  arn   = module.lambda_function["deribit-lambda"].arn
-  rule  = aws_cloudwatch_event_rule.schedule_snapshot_positions.name
-  input = jsonencode({
-    currencies = ["BTC", "ETH", "USDC", "USDT", "EURR"]
-  })
-}
-
-resource "aws_lambda_permission" "allow_eventbridge" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda_function["deribit-lambda"].name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.schedule_snapshot_positions.arn
-}
-
 resource "aws_sqs_queue" "queue_ibrokers_report" {
       name = "${local.ws.aws_stage}-${local.queue_ibrokers_report}"
       visibility_timeout_seconds = 60

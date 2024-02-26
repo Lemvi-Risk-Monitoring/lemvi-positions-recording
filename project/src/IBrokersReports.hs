@@ -4,18 +4,26 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds #-}
 
-module IBrokersReports (handleRequest, handleFetch, ReportRequestResponse, ReportFetchResponse, CallbackBody(..), ReportRequestResult(..)) where
+module IBrokersReports (
+    handleRequest,
+    handleFetch,
+    findReportDate,
+    ReportRequestResponse,
+    ReportFetchResponse,
+    CallbackBody(..),
+    ReportRequestResult(..)
+) where
 
 import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy.Char8 as BSL
+import qualified Data.ByteString.Lazy.Char8 as BSC
 
 import Text.XML.Light
     ( unqual,
       findElements,
       Attr(Attr),
       Element(elAttribs),
-      QName(qName), parseXMLDoc, strContent, findElement )
+      QName(qName), parseXMLDoc, strContent, findElement, findAttr )
 
 import Data.Map.Strict (fromList)
 import Data.Aeson.Text (encodeToLazyText)
@@ -32,6 +40,7 @@ import Data.Maybe (fromMaybe)
 import qualified System.Log.FastLogger as LOG
 
 import qualified PostSQS
+import qualified Helper
 import qualified AWSEvent (RecordSet(..), Record(..))
 
 data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String, countRetries :: Int }
@@ -51,9 +60,10 @@ data ReportRequestResponse = ReportRequestResponse ReportRequestResult | ReportR
   deriving Generic
 instance A.ToJSON ReportRequestResponse
 
-data ReportFetchResponse = ReportFetchError String
+data ReportFetchResponse = ReportFetchResponse T.Text | ReportFetchError T.Text
   deriving Generic
 instance A.ToJSON ReportFetchResponse
+
 
 createRequestIBFlexReport :: String -> String -> String -> IO ReportRequestResponse
 createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
@@ -77,7 +87,7 @@ loadIBFlexReport :: String -> String -> String -> IO String
 loadIBFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
     let ibReportURL  = ibReportBaseUrl <> "?t=" <> ibToken <> "&q=" <> ibReportReferenceCode <> "&v=3"
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
-    logMessage loggerSet $ "loading report using url " <> ibReportURL
+    logMessage loggerSet $ "loading report using url " <> T.pack ibReportURL
     reportRequest <- parseRequest ibReportURL
     ibReport <- httpBS reportRequest
     return $ BS.unpack (getResponseBody ibReport)
@@ -159,6 +169,12 @@ handleRequest flexReportEvent =
     where
         ibFlexUrlDefault = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
 
+findReportDate :: Element -> Maybe T.Text
+findReportDate xml = do
+    xmlElem <- findElement (unqual "FlexStatement") xml
+    attr <- findAttr (unqual "toDate") xmlElem
+    return $ T.pack attr
+
 handleFetch :: A.Value -> IO ReportFetchResponse
 handleFetch flexReportReference = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
@@ -170,23 +186,35 @@ handleFetch flexReportReference = do
                 Just (AWSEvent.RecordSet records) -> do
                     let
                         bodyText = AWSEvent.body $ head records
-                    case (A.eitherDecode ((BSL.pack . T.unpack) bodyText) :: Either String IBrokersReports.CallbackBody) of
-                        Left msg -> return $ ReportFetchError $ "failed to parse input event body: " <> msg
+                    case (A.eitherDecode ((BSC.pack . T.unpack) bodyText) :: Either String IBrokersReports.CallbackBody) of
+                        Left msg -> return $ ReportFetchError $ "failed to parse input event body: " <> T.pack msg
                         Right body -> do
                             let url = callbackURL (contents body)
                             let refCode = referenceCode (contents body)
-                            let retries = countRetries (contents body)
+                            -- let retries = countRetries (contents body)
                             report <- fetchFlexReport url token refCode
                             let
-                                ibRecords = makeIBRecords report
-                            logMessage loggerSet $ show ibRecords
-                            return $ ReportFetchError $ "not yet implemented: processing " <> show ibRecords
+                                maybeReportDate = findReportDate report
+                                ibRecords = BS.pack . LT.unpack $ makeIBRecords report
+                            case maybeReportDate of
+                                Just reportDate -> do
+                                    logMessage loggerSet $ T.pack "saving records to " <> outputPath
+                                    Helper.writeToS3 (T.pack bucket) outputPath ibRecords "application/json"
+                                    return $ ReportFetchResponse $ T.pack "saved records to " <> outputPath
+                                        where
+                                            outputPath = toDatePath reportDate <> "/" <> reportDate <> ".json"
+                                Nothing -> return $ ReportFetchError $ "failed to retrieve report date " <> T.pack (show report)
                 Nothing -> do
-                    logMessage loggerSet $ "failed to parse input event: " <> show flexReportReference
-                    return $ ReportFetchError $ "failed to parse input event" <> show flexReportReference
-                where jsonText = A.encode flexReportReference  
+                    logMessage loggerSet $ T.pack "failed to parse input event: " <> T.pack (show flexReportReference)
+                    return $ ReportFetchError $ "failed to parse input event" <> T.pack (show flexReportReference)
+                where jsonText = A.encode flexReportReference
         _ -> return $ ReportFetchError "required env variables: IB_FLEX_REPORT_TOKEN, IBROKERS_BUCKET_POSITIONS"
 
-logMessage :: LOG.LoggerSet -> String -> IO ()
+toDatePath :: T.Text -> T.Text
+toDatePath dateText = year <> "/" <> month
+    where
+        (year, month) = T.splitAt 4 (T.take 6 dateText)
+
+logMessage :: LOG.LoggerSet -> T.Text -> IO ()
 logMessage loggerSet msg = do
     LOG.pushLogStrLn loggerSet . LOG.toLogStr $ msg

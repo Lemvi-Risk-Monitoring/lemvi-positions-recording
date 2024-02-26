@@ -44,6 +44,7 @@ common shared
         , generic-lens >= 2.2.2.0
         , resourcet >= 1.3.0
         , fast-logger >= 3.2.2
+        , directory >= 1.3.7.1
     ghc-options:
         -Wall
         -Wcompat
@@ -139,6 +140,7 @@ test-suite lemvi-positions-recording-test
     hs-source-dirs:   project/test
     main-is:          Spec.hs
     other-modules:
+        PostSQS
         Helper
         IBrokersReports
         AWSEvent

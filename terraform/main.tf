@@ -37,14 +37,14 @@ locals {
       "ibrokers-request-lambda"   = { 
         exe_path = local.exe_path_ibrokers_request_app
         description = <<-EOT
-        Retrieving IBrokers report.
+        Requesting IBrokers report.
+        Example test: { "flexQueryId": "906041" }
         EOT
       },
       "ibrokers-fetch-lambda"   = { 
         exe_path = local.exe_path_ibrokers_fetch_app
         description = <<-EOT
-        Requesting IBrokers report.
-        Example test: { "flexQueryId": "906041" }
+        Retrieving IBrokers report.
         EOT
       },
       "deribit-lambda"    =  { 

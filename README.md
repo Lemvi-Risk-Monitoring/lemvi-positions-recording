@@ -91,3 +91,9 @@ curl -X POST -H "Content-Type: application/json" -d '{"currencies":["BTC", "ETH"
 
 sudo tcpdump -A -r /tmp/http.log tcp port 80
 ```
+
+### Unit testing
+
+```shell
+HSPEC_COLOR=yes cabal test --test-show-details="streaming" --keep-going --test-option=--match --test-option="AWSEvent"
+```

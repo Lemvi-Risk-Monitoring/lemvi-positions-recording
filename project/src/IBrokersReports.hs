@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds #-}
 
-module IBrokersReports (handleRequest, handleFetch, ReportRequestResponse, ReportFetchResponse) where
+module IBrokersReports (handleRequest, handleFetch, ReportRequestResponse, ReportFetchResponse, CallbackBody(..), ReportRequestResult(..)) where
 
 import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 import qualified Data.ByteString.Char8 as BS
@@ -31,12 +31,20 @@ import Data.Maybe (fromMaybe)
 import qualified System.Log.FastLogger as LOG
 
 import qualified PostSQS
-import qualified AWSEvent
-
+import qualified AWSEvent (RecordSet(..))
 
 data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String, countRetries :: Int }
-  deriving Generic
+  deriving (Show, Generic)
 instance A.ToJSON ReportRequestResult
+instance A.FromJSON ReportRequestResult
+
+data CallbackBody = Record
+    { contents      :: ReportRequestResult
+    , tag           :: T.Text
+    } deriving (Show, Generic)
+
+instance A.FromJSON CallbackBody
+instance A.ToJSON CallbackBody
 
 data ReportRequestResponse = ReportRequestResponse ReportRequestResult | ReportRequestError String
   deriving Generic
@@ -152,12 +160,14 @@ handleFetch :: A.Value -> IO ReportFetchResponse
 handleFetch flexReportReference = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
     case A.decode jsonText :: Maybe AWSEvent.RecordSet of
-            Just records -> do
-                logMessage loggerSet $ show records
-                return $ ReportFetchError $ "not yet implemented: processing " <> show records
-            Nothing     -> do
-                logMessage loggerSet $ "failed to parse input event: " <> show flexReportReference
-                return $ ReportFetchError "failes to parse input event"
+        Just (AWSEvent.RecordSet records) -> do
+            let
+                record = head records
+            logMessage loggerSet $ show record
+            return $ ReportFetchError $ "not yet implemented: processing " <> show record
+        Nothing     -> do
+            logMessage loggerSet $ "failed to parse input event: " <> show flexReportReference
+            return $ ReportFetchError "failes to parse input event"
         where jsonText = A.encode flexReportReference
 
 logMessage :: LOG.LoggerSet -> String -> IO ()

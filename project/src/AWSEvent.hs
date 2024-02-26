@@ -1,10 +1,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE InstanceSigs #-}
 
-module AWSEvent (RecordSet) where
+module AWSEvent (RecordSet(..), Record(..)) where
 
 import GHC.Generics (Generic)
 import qualified Data.Aeson as A
+import qualified Data.Aeson.Types as AT
 import qualified Data.Text as T
 
 data AttributeSet = AttributeSet
@@ -14,7 +17,15 @@ data AttributeSet = AttributeSet
     , sentTimestamp                    :: T.Text
     } deriving (Show, Generic)
 
-instance A.FromJSON AttributeSet
+instance A.FromJSON AttributeSet where
+    parseJSON :: AT.Value -> AT.Parser AttributeSet
+    parseJSON = A.withObject "AttributeSet" $ \o -> do
+        afrt <- o A..: "ApproximateFirstReceiveTimestamp"
+        arc <- o A..: "ApproximateReceiveCount"
+        sid <- o A..: "SenderId"
+        sts <- o A..: "SentTimestamp"
+        return $ AttributeSet afrt arc sid sts
+
 instance A.ToJSON AttributeSet
 
 data Record = Record
@@ -33,8 +44,13 @@ instance A.FromJSON Record
 instance A.ToJSON Record
 
 data RecordSet where
-  Records :: {records :: [Record]} -> RecordSet
+  RecordSet :: {records :: [Record]} -> RecordSet
   deriving (Show, Generic)
 
-instance A.FromJSON RecordSet
+instance A.FromJSON RecordSet where
+    parseJSON :: AT.Value -> AT.Parser RecordSet
+    parseJSON = A.withObject "RecordSet" $ \o -> do
+        recs <- o A..: "Records"
+        return $ RecordSet recs
+
 instance A.ToJSON RecordSet

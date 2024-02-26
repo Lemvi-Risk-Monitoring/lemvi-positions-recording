@@ -140,7 +140,10 @@ test-suite lemvi-positions-recording-test
     main-is:          Spec.hs
     other-modules:
         Helper
+        IBrokersReports
+        AWSEvent
         HelperSpec
+        AWSEventDecoderSpec
     hs-source-dirs:
         project/test
         project/src

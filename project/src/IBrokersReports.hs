@@ -24,27 +24,27 @@ import Control.Exception (throw, Exception)
 import Data.Data (Typeable)
 import Network.HTTP.Conduit ( responseTimeoutMicro )
 import GHC.Generics (Generic)
-import Data.Aeson ( ToJSON, FromJSON, Value, parseJSON )
+import qualified Data.Aeson as A
 import Data.Aeson.Types (parseMaybe)
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
 import qualified System.Log.FastLogger as LOG
 
-import qualified System.IO as SIO
 import qualified PostSQS
+import qualified AWSEvent
 
 
 data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String, countRetries :: Int }
   deriving Generic
-instance ToJSON ReportRequestResult
+instance A.ToJSON ReportRequestResult
 
 data ReportRequestResponse = ReportRequestResponse ReportRequestResult | ReportRequestError String
   deriving Generic
-instance ToJSON ReportRequestResponse
+instance A.ToJSON ReportRequestResponse
 
 data ReportFetchResponse = ReportFetchError String
   deriving Generic
-instance ToJSON ReportFetchResponse
+instance A.ToJSON ReportFetchResponse
 
 createRequestIBFlexReport :: String -> String -> String -> IO ReportRequestResponse
 createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
@@ -125,11 +125,11 @@ fetchFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
 data FlexReportEvent where
   FlexReportEvent :: {flexQueryId :: String} -> FlexReportEvent
   deriving Generic
-instance FromJSON FlexReportEvent
+instance A.FromJSON FlexReportEvent
 
-handleRequest :: Value -> IO ReportRequestResponse
+handleRequest :: A.Value -> IO ReportRequestResponse
 handleRequest flexReportEvent =
-    case parseMaybe parseJSON flexReportEvent of
+    case parseMaybe A.parseJSON flexReportEvent of
         Nothing -> return $ ReportRequestError "missing flexQueryId in request"
         Just FlexReportEvent { flexQueryId } -> do
             maybeFlexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
@@ -148,12 +148,17 @@ handleRequest flexReportEvent =
     where
         ibFlexUrlDefault = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
 
-handleFetch :: Value -> IO ReportFetchResponse
+handleFetch :: A.Value -> IO ReportFetchResponse
 handleFetch flexReportReference = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
-    logMessage loggerSet ((LT.unpack . encodeToLazyText) flexReportReference)
-    -- logMessage loggerSet "not implemented"
-    return $ ReportFetchError "not implemented"
+    case A.decode jsonText :: Maybe AWSEvent.RecordSet of
+            Just records -> do
+                logMessage loggerSet $ show records
+                return $ ReportFetchError $ "not yet implemented: processing " <> show records
+            Nothing     -> do
+                logMessage loggerSet $ "failed to parse input event: " <> show flexReportReference
+                return $ ReportFetchError "failes to parse input event"
+        where jsonText = A.encode flexReportReference
 
 logMessage :: LOG.LoggerSet -> String -> IO ()
 logMessage loggerSet msg = do

@@ -28,10 +28,31 @@ locals {
   exe_path_deribit_app       = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
 
   lambda_functions = {
-      "echo-lambda"       = local.exe_path_echo_lambda,
-      "ibrokers-request-lambda"   = local.exe_path_ibrokers_request_app,
-      "ibrokers-fetch-lambda"   = local.exe_path_ibrokers_fetch_app,
-      "deribit-lambda"    = local.exe_path_deribit_app,
+      "echo-lambda"       = {
+        exe_path = local.exe_path_echo_lambda
+        description = <<-EOT
+        Testing lambda function.
+        EOT
+        }
+      "ibrokers-request-lambda"   = { 
+        exe_path = local.exe_path_ibrokers_request_app
+        description = <<-EOT
+        Retrieving IBrokers report.
+        EOT
+      },
+      "ibrokers-fetch-lambda"   = { 
+        exe_path = local.exe_path_ibrokers_fetch_app
+        description = <<-EOT
+        Requesting IBrokers report.
+        Example test: { "flexQueryId": "906041" }
+        EOT
+      },
+      "deribit-lambda"    =  { 
+        exe_path = local.exe_path_deribit_app
+        description = <<-EOT
+        Requesting Deribit positions
+        EOT
+      }
   }
   
   ibrokers_bucket_name = "${local.ws.aws_stage}-ibrokers-positions"
@@ -43,8 +64,9 @@ module "lambda_function" {
   source = "./aws-lambda"
 
   function_name = "${local.ws.aws_stage}-${each.key}"
-  exe_path = each.value
+  exe_path = each.value.exe_path
   timeout = 60
+  description = each.value.description
   environment_variables = {
     "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
     "DERIBIT_CLIENT_ID": var.deribit_client_id,

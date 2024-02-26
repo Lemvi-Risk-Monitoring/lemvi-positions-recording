@@ -67,6 +67,7 @@ library
         , IBrokersReports
         , DeribitReports
         , PostSQS
+        , AWSEvent
 
     hs-source-dirs:   project/src
     default-language: Haskell2010

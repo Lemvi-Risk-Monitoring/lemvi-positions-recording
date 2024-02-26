@@ -13,3 +13,7 @@ variable "environment_variables" {
 variable "timeout" {
   type = number
 }
+
+variable "description" {
+  type = string
+}

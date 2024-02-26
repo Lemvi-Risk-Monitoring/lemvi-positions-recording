@@ -31,27 +31,42 @@ locals {
       "echo-lambda"       = {
         exe_path = local.exe_path_echo_lambda
         description = <<-EOT
-        Testing lambda function.
-        EOT
+          Testing lambda function.
+          EOT
+        environment_variables = {
+          }
         }
       "ibrokers-request-lambda"   = { 
         exe_path = local.exe_path_ibrokers_request_app
         description = <<-EOT
-        Requesting IBrokers report.
-        Example test: { "flexQueryId": "906041" }
-        EOT
+          Requesting IBrokers report.
+          Example test: { "flexQueryId": "906041" }
+          EOT
+        environment_variables = {
+          "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
+          "IBROKERS_QUEUE_REPORT_URL": aws_sqs_queue.queue_ibrokers_report.url
+          }
       },
       "ibrokers-fetch-lambda"   = { 
         exe_path = local.exe_path_ibrokers_fetch_app
         description = <<-EOT
-        Retrieving IBrokers report.
-        EOT
+          Retrieving IBrokers report.
+          EOT
+        environment_variables = {
+          "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
+          "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
+          }
       },
       "deribit-lambda"    =  { 
         exe_path = local.exe_path_deribit_app
         description = <<-EOT
-        Requesting Deribit positions
-        EOT
+          Requesting Deribit positions
+          EOT
+        environment_variables = {
+          "DERIBIT_CLIENT_ID": var.deribit_client_id,
+          "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
+          "DERIBIT_BUCKET_POSITIONS": aws_s3_bucket.deribit_bucket.bucket
+          }
       }
   }
   
@@ -67,14 +82,7 @@ module "lambda_function" {
   exe_path = each.value.exe_path
   timeout = 60
   description = each.value.description
-  environment_variables = {
-    "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
-    "DERIBIT_CLIENT_ID": var.deribit_client_id,
-    "DERIBIT_CLIENT_SECRET": var.deribit_client_secret,
-    "DERIBIT_BUCKET_POSITIONS": aws_s3_bucket.deribit_bucket.bucket,
-    "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket,
-    "IBROKERS_QUEUE_REPORT_URL": aws_sqs_queue.queue_ibrokers_report.url
-  }
+  environment_variables = each.value.environment_variables
 }
 
 module "gateway_proxy_integration" {

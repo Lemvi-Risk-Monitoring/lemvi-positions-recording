@@ -8,6 +8,7 @@ module IBrokersReports (handleRequest, handleFetch, ReportRequestResponse, Repor
 
 import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as BSL
 
 import Text.XML.Light
     ( unqual,
@@ -31,7 +32,7 @@ import Data.Maybe (fromMaybe)
 import qualified System.Log.FastLogger as LOG
 
 import qualified PostSQS
-import qualified AWSEvent (RecordSet(..))
+import qualified AWSEvent (RecordSet(..), Record(..))
 
 data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String, countRetries :: Int }
   deriving (Show, Generic)
@@ -75,6 +76,8 @@ createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
 loadIBFlexReport :: String -> String -> String -> IO String
 loadIBFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
     let ibReportURL  = ibReportBaseUrl <> "?t=" <> ibToken <> "&q=" <> ibReportReferenceCode <> "&v=3"
+    loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
+    logMessage loggerSet $ "loading report using url " <> ibReportURL
     reportRequest <- parseRequest ibReportURL
     ibReport <- httpBS reportRequest
     return $ BS.unpack (getResponseBody ibReport)
@@ -128,7 +131,7 @@ fetchFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
             Just (errorCode, errorMessage) -> throw (ReportServerError (LT.pack msg))
                 where msg = "report not ready: " <> errorMessage <> " (code " <> show errorCode <> ")"
             Nothing -> return tree
-        Nothing -> throw (LoadingFailed "failed to load data")
+        Nothing -> throw $ LoadingFailed "failed to load data"
 
 data FlexReportEvent where
   FlexReportEvent :: {flexQueryId :: String} -> FlexReportEvent
@@ -159,16 +162,30 @@ handleRequest flexReportEvent =
 handleFetch :: A.Value -> IO ReportFetchResponse
 handleFetch flexReportReference = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
-    case A.decode jsonText :: Maybe AWSEvent.RecordSet of
-        Just (AWSEvent.RecordSet records) -> do
-            let
-                record = head records
-            logMessage loggerSet $ show record
-            return $ ReportFetchError $ "not yet implemented: processing " <> show record
-        Nothing     -> do
-            logMessage loggerSet $ "failed to parse input event: " <> show flexReportReference
-            return $ ReportFetchError "failes to parse input event"
-        where jsonText = A.encode flexReportReference
+    maybeFlexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
+    maybeBucket <- lookupEnv "IBROKERS_BUCKET_POSITIONS"
+    case (maybeFlexReportToken, maybeBucket) of
+        (Just token, Just bucket) -> do
+            case A.decode jsonText :: Maybe AWSEvent.RecordSet of
+                Just (AWSEvent.RecordSet records) -> do
+                    let
+                        bodyText = AWSEvent.body $ head records
+                    case (A.eitherDecode ((BSL.pack . T.unpack) bodyText) :: Either String IBrokersReports.CallbackBody) of
+                        Left msg -> return $ ReportFetchError $ "failed to parse input event body: " <> msg
+                        Right body -> do
+                            let url = callbackURL (contents body)
+                            let refCode = referenceCode (contents body)
+                            let retries = countRetries (contents body)
+                            report <- fetchFlexReport url token refCode
+                            let
+                                ibRecords = makeIBRecords report
+                            logMessage loggerSet $ show ibRecords
+                            return $ ReportFetchError $ "not yet implemented: processing " <> show ibRecords
+                Nothing -> do
+                    logMessage loggerSet $ "failed to parse input event: " <> show flexReportReference
+                    return $ ReportFetchError $ "failed to parse input event" <> show flexReportReference
+                where jsonText = A.encode flexReportReference  
+        _ -> return $ ReportFetchError "required env variables: IB_FLEX_REPORT_TOKEN, IBROKERS_BUCKET_POSITIONS"
 
 logMessage :: LOG.LoggerSet -> String -> IO ()
 logMessage loggerSet msg = do

@@ -67,18 +67,22 @@ data ConfigMoveFTP = ConfigMoveFTP {
         --   "IB_FTP_PASSWORD": var.ib_ftp_password,
         --   "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
 
---getMoveFTPConfig :: Maybe ( ConfigMoveFTP)
+getMoveFTPConfig :: IO (Maybe ConfigMoveFTP)
 getMoveFTPConfig = do
-    maybeFlexReportToken <- lookupEnv "IB_FLEX_REPORT_TOKEN"
+    maybePpkp <- lookupEnv "IB_PGP_PRIVATE_KEY_PATH"
+    maybePpk <- lookupEnv "IB_PGP_PASS_KEY"
+    maybeFTPSrv <- lookupEnv "IB_FTP_SERVER"
+    maybeFTPUser <- lookupEnv "IB_FTP_USERNAME"
+    maybeFTPPwd <- lookupEnv "IB_FTP_PASSWORD"
     maybeBucket <- lookupEnv "IBROKERS_BUCKET_POSITIONS"
-    case (maybeFlexReportToken, maybeBucket) of
-        (Just flexReportToken, Just bucket) ->  return $ Just ConfigMoveFTP {
-                ibPGPPrivateKeyPath = flexReportToken, 
-                ibPGPPassKey = bucket,
-                ibFTPServerName  = "",
-                ibFTPUsername = "",
-                ibFTPPassword = "",
-                ibPositionsBucket = ""
+    case (maybePpkp, maybePpk, maybeFTPSrv, maybeFTPUser, maybeFTPPwd, maybeBucket) of
+        (Just ppkp, Just ppk, Just ftpSrv, Just ftpUser, Just ftpPwd, Just bucket) ->  return $ Just ConfigMoveFTP {
+                ibPGPPrivateKeyPath = ppkp, 
+                ibPGPPassKey = ppk,
+                ibFTPServerName  = ftpSrv,
+                ibFTPUsername = ftpUser,
+                ibFTPPassword = ftpPwd,
+                ibPositionsBucket = bucket
             }
         _ -> return Nothing
 

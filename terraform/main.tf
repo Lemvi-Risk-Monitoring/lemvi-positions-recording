@@ -20,16 +20,19 @@ locals {
   echo_lambda_dir_name       = "echo-app"
   ibrokers_request_app_dir_name      = "ibrokers-request-app"
   ibrokers_fetch_app_dir_name      = "ibrokers-fetch-app"
+  ibrokers_ftp_app_dir_name      = "ibrokers-ftp-app"
   deribit_app_dir_name       = "deribit-app"
   dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
   exe_path_echo_lambda       = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
   exe_path_ibrokers_request_app      = "${local.dist_path}/${local.ibrokers_request_app_dir_name}/build/${local.ibrokers_request_app_dir_name}/${local.ibrokers_request_app_dir_name}"
   exe_path_ibrokers_fetch_app      = "${local.dist_path}/${local.ibrokers_fetch_app_dir_name}/build/${local.ibrokers_fetch_app_dir_name}/${local.ibrokers_fetch_app_dir_name}"
+  exe_path_ibrokers_ftp_app      = "${local.dist_path}/${local.ibrokers_ftp_app_dir_name}/build/${local.ibrokers_ftp_app_dir_name}/${local.ibrokers_ftp_app_dir_name}"
   exe_path_deribit_app       = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
 
   lambda_functions = {
       "echo-lambda"       = {
         exe_path = local.exe_path_echo_lambda
+        timeout = 60
         description = <<-EOT
           Testing lambda function.
           EOT
@@ -38,6 +41,7 @@ locals {
         }
       "ibrokers-request-lambda"   = { 
         exe_path = local.exe_path_ibrokers_request_app
+        timeout = 60
         description = <<-EOT
           Requesting IBrokers report.
           Example test: { "flexQueryId": "906041" }
@@ -49,6 +53,18 @@ locals {
       },
       "ibrokers-fetch-lambda"   = { 
         exe_path = local.exe_path_ibrokers_fetch_app
+        timeout = 60
+        description = <<-EOT
+          Retrieving IBrokers report.
+          EOT
+        environment_variables = {
+          "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
+          "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
+          }
+      },
+      "ibrokers-ftp-lambda"   = { 
+        exe_path = local.exe_path_ibrokers_ftp_app
+        timeout = 60
         description = <<-EOT
           Retrieving IBrokers report.
           EOT
@@ -59,6 +75,7 @@ locals {
       },
       "deribit-lambda"    =  { 
         exe_path = local.exe_path_deribit_app
+        timeout = 60
         description = <<-EOT
           Requesting Deribit positions
           EOT
@@ -80,7 +97,7 @@ module "lambda_function" {
 
   function_name = "${local.ws.aws_stage}-${each.key}"
   exe_path = each.value.exe_path
-  timeout = 60
+  timeout = each.value.timeout
   description = each.value.description
   environment_variables = each.value.environment_variables
 }

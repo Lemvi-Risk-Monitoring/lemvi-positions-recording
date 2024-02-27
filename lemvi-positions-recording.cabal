@@ -22,29 +22,29 @@ build-type:         Simple
 extra-doc-files:    CHANGELOG.md
 
 common shared
-    build-depends: base >=4.7 && <5
-        , aeson >= 2.2.1 && < 2.3
-        , bytestring >= 0.11.5 && < 0.12
-        , containers >= 0.6.7 && < 0.7
-        , hal >= 1.1 && < 1.2
-        , http-client >= 0.7.16 && < 0.8
-        , http-conduit >= 2.3.8 && < 2.4
-        , servant >= 0.20.1 && < 0.21
-        , servant-server >= 0.20 && < 0.21
-        , text >= 2.0.2 && < 2.1
-        , warp >= 3.3.31 && < 3.4
-        , xml >= 1.3.14 && < 1.4
-        , unordered-containers >= 0.2.20 && < 0.3
-        , http-types >= 0.12.4 && < 0.13
-        , amazonka >= 2.0 && < 2.1
-        , amazonka-s3 >= 2.0 && < 2.1
-        , amazonka-sqs >= 2.0 && < 2.1
-        , time >= 1.12.2 && < 1.13
-        , lens >= 5.2.3 && < 5.3
-        , generic-lens >= 2.2.2.0
-        , resourcet >= 1.3.0
-        , fast-logger >= 3.2.2
-        , directory >= 1.3.7.1
+    build-depends: base >=4.7
+        , aeson
+        , bytestring
+        , containers
+        , hal
+        , http-client
+        , http-conduit
+        , servant
+        , servant-server
+        , text
+        , warp
+        , xml
+        , unordered-containers
+        , http-types
+        , amazonka
+        , amazonka-s3
+        , amazonka-sqs
+        , time
+        , resourcet
+        , lens
+        , generic-lens
+        , fast-logger
+        , directory
     ghc-options:
         -Wall
         -Wcompat
@@ -69,6 +69,7 @@ library
         , DeribitReports
         , PostSQS
         , AWSEvent
+        , IBrokersMoveFTP
 
     hs-source-dirs:   project/src
     default-language: Haskell2010
@@ -158,6 +159,7 @@ test-suite lemvi-positions-recording-test
         PostSQS
         Helper
         IBrokersReports
+        IBrokersMoveFTP
         AWSEvent
         HelperSpec
         AWSEventDecoderSpec

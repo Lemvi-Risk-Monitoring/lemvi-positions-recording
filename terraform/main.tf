@@ -2,6 +2,8 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
 
   workspaces = {
@@ -69,7 +71,11 @@ locals {
           Retrieving IBrokers report.
           EOT
         environment_variables = {
-          "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
+          "IB_PGP_PRIVATE_KEY_PATH": "${aws_s3_bucket.lambda_resources_bucket.bucket}/private-ibrokers-reporting.pgp",
+          "IB_PGP_PASS_KEY": var.ib_pgp_pass_key,
+          "IB_FTP_SERVER": var.ib_ftp_server,
+          "IB_FTP_USERNAME": var.ib_ftp_username,
+          "IB_FTP_PASSWORD": var.ib_ftp_password,
           "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
           }
       },
@@ -87,8 +93,9 @@ locals {
       }
   }
   
-  ibrokers_bucket_name = "${local.ws.aws_stage}-ibrokers-positions"
-  deribit_bucket_name = "${local.ws.aws_stage}-deribit-positions"
+  ibrokers_bucket_name = "${local.ws.aws_stage}-ibrokers-positions-${data.aws_caller_identity.current.account_id}"
+  deribit_bucket_name = "${local.ws.aws_stage}-deribit-positions-${data.aws_caller_identity.current.account_id}"
+  lambda_resources_bucket_name = "${local.ws.aws_stage}-lambda-resources-${data.aws_caller_identity.current.account_id}"
 }
 
 module "lambda_function" {
@@ -118,6 +125,10 @@ resource "aws_s3_bucket" "ibrokers_bucket" {
 
 resource "aws_s3_bucket" "deribit_bucket" {
   bucket = local.deribit_bucket_name
+}
+
+resource "aws_s3_bucket" "lambda_resources_bucket" {
+  bucket = local.lambda_resources_bucket_name
 }
 
 resource "aws_sqs_queue" "queue_ibrokers_report" {

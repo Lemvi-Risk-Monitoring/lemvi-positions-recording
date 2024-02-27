@@ -15,6 +15,8 @@ The following environment variables can be defined within the GitHub repository 
 - DERIBIT_CLIENT_SECRET
 - IB_FLEX_QUERY_ID
 - IB_FLEX_REPORT_TOKEN
+- IB_PGP_PASS_KEY
+- IB_PGP_PRIVATE_KEY
 
 ### Basic setup
 
@@ -26,10 +28,13 @@ Environment variables for `terraform`:
 export TF_VAR_aws_stage=test
 export TF_VAR_aws_region=$(aws configure get region)
 export TF_VAR_aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')
-export TF_VAR_aws_region=$AWS_DEFAULT_REGION
-export TF_VAR_deribit_client_id=$DERIBIT_CLIENT_ID
-export TF_VAR_deribit_client_secret=$DERIBIT_CLIENT_SECRET
-export TF_VAR_ib_flex_report_token=$IB_FLEX_REPORT_TOKEN
+export TF_VAR_aws_region="$AWS_DEFAULT_REGION"
+export TF_VAR_deribit_client_id="$DERIBIT_CLIENT_ID"
+export TF_VAR_deribit_client_secret="$DERIBIT_CLIENT_SECRET"
+export TF_VAR_ib_flex_report_token="$IB_FLEX_REPORT_TOKEN"
+export TF_VAR_ib_pgp_pass_key="$IB_PGP_PASS_KEY"
+export TF_VAR_ib_ftp_username="$IB_FTP_USERNAME"
+export TF_VAR_ib_ftp_password="$IB_FTP_PASSWORD"
 ```
 
 AWS settings can be overriden using:
@@ -74,7 +79,7 @@ aws lambda invoke \
 Starting the Warp server:
 
 ```shell
-cabal run local-app
+cabal run app-local
 ```
 
 ```shell

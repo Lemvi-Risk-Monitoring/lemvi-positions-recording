@@ -23,6 +23,7 @@ import qualified System.Log.FastLogger as LOG
 import qualified Helper
 import qualified Network.Curl as NC
 import qualified Data.IORef as IOR
+import qualified Data.List as L
 
 
 data MoveFTPResult = MoveFTPResult { message :: T.Text } deriving (Generic, Show)
@@ -81,11 +82,10 @@ handleMoveFTP requestMoveFTP = do
             case result of
                 NC.CurlOK -> do
                     response <- IOR.readIORef dirListRef
-                    --NCE.reset curl
                     let
                         extractFileNames :: String -> [String]
                         extractFileNames = map (last . words) . lines
-                        fileList = extractFileNames (head response)
+                        fileList = (L.sort . extractFileNames . head) response
 
                     mapM_ (retrieveFile curl (T.pack (ibPositionsBucket cfg))) (filter endsWithSixNumbers fileList)
                     return $ MoveFTPResponse MoveFTPResult {message = T.pack (head response)}
@@ -96,23 +96,32 @@ handleMoveFTP requestMoveFTP = do
 retrieveFile :: NC.Curl -> T.Text -> String -> IO ()
 retrieveFile curl bucket fileName = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
-    logMessage loggerSet $ "processing file " <> T.pack fileName
+    logMessage loggerSet $ "retrieving file " <> T.pack fileName
     fileContentRef <- IOR.newIORef []
     _ <- NCE.setopt curl (NC.CurlCustomRequest ("RETR outgoing/" <> fileName))
     _ <- NCE.setopt curl (NC.CurlWriteFunction (NC.gatherOutput fileContentRef))
-    result <- NCE.perform curl
-    content <- IOR.readIORef fileContentRef
-    let
-        targetDate = (reverse . take 16 . drop 8 . reverse) fileName
-        targetYear = take 4 targetDate
-        targetMonth = (take 6 . drop 4) targetDate
-        targetObjectName = "encrypted/" <> targetYear <> "/" <> targetMonth <> "/" <> fileName
-    Helper.writeToS3 bucket (T.pack targetObjectName) (BS.pack (head content)) "application/octet-stream"
+    downloadResult <- NCE.perform curl
+    case downloadResult of
+        NC.CurlOK -> do
+            content <- IOR.readIORef fileContentRef
+            let
+                targetDate = (reverse . take 8 . drop 8 . reverse) fileName
+                targetYear = take 4 targetDate
+                targetMonth = (take 2 . drop 4) targetDate
+                targetObjectName = "encrypted/" <> targetYear <> "/" <> targetMonth <> "/" <> fileName
+            logMessage loggerSet $ "storing file as s3:" <> bucket <> "/" <> T.pack targetObjectName
+            Helper.writeToS3 bucket (T.pack targetObjectName) (BS.pack (head content)) "application/octet-stream"
+            _ <- NCE.setopt curl (NC.CurlCustomRequest ("RM outgoing/" <> fileName))
+            deleteResult <- NCE.perform curl
+            case deleteResult of
+                NC.CurlOK -> logMessage loggerSet $ "successfully processed file " <> T.pack fileName
+                _ -> logMessage loggerSet $ "failed to delete processed file " <> T.pack fileName
+        _ -> logMessage loggerSet $ "failed to process file " <> T.pack fileName
 
 endsWithSixNumbers :: String -> Bool
 endsWithSixNumbers fileName =
     case reverse fileName of
-        ('p':'g':'p':'.':rest) | length rest >= 6 && all (`elem` ['0'..'9']) (take 6 rest) -> True
+        ('p':'g':'p':'.':'l':'m':'x':'.':rest) | length rest >= 8 && all (`elem` ['0'..'9']) (take 8 rest) -> True 
         _ -> False
 
 logMessage :: LOG.LoggerSet -> T.Text -> IO ()

@@ -75,8 +75,9 @@ handleMoveFTP requestMoveFTP = do
             _ <- NCE.setopt curl (NC.CurlURL ("ftp://" <> ibFTPServerName cfg))
             _ <- NCE.setopt curl (NC.CurlPort 21)
             _ <- NCE.setopt curl (NC.CurlUserPwd (ibFTPUsername cfg <> ":" <> ibFTPPassword cfg))
-            _ <- NCE.setopt curl (NC.CurlVerbose True)
-            _ <- NCE.setopt curl (NC.CurlCustomRequest "LIST outgoing")
+            --_ <- NCE.setopt curl (NC.CurlVerbose True)
+            _ <- NCE.setopt curl (NC.CurlQuote ["CWD outgoing"])
+            _ <- NCE.setopt curl (NC.CurlCustomRequest "LIST")
             _ <- NCE.setopt curl (NC.CurlWriteFunction (NC.gatherOutput dirListRef))
             result <- NCE.perform curl
             case result of
@@ -98,7 +99,7 @@ retrieveFile curl bucket fileName = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
     logMessage loggerSet $ "retrieving file " <> T.pack fileName
     fileContentRef <- IOR.newIORef []
-    _ <- NCE.setopt curl (NC.CurlCustomRequest ("RETR outgoing/" <> fileName))
+    _ <- NCE.setopt curl (NC.CurlCustomRequest ("RETR " <> "/outgoing/" <> fileName))
     _ <- NCE.setopt curl (NC.CurlWriteFunction (NC.gatherOutput fileContentRef))
     downloadResult <- NCE.perform curl
     case downloadResult of
@@ -111,7 +112,7 @@ retrieveFile curl bucket fileName = do
                 targetObjectName = "encrypted/" <> targetYear <> "/" <> targetMonth <> "/" <> fileName
             logMessage loggerSet $ "storing file as s3:" <> bucket <> "/" <> T.pack targetObjectName
             Helper.writeToS3 bucket (T.pack targetObjectName) (BS.pack (head content)) "application/octet-stream"
-            _ <- NCE.setopt curl (NC.CurlCustomRequest ("RM outgoing/" <> fileName))
+            _ <- NCE.setopt curl (NC.CurlCustomRequest ("DEL /outgoing/" <> fileName))
             deleteResult <- NCE.perform curl
             case deleteResult of
                 NC.CurlOK -> logMessage loggerSet $ "successfully processed file " <> T.pack fileName

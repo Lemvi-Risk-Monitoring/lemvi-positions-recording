@@ -45,6 +45,7 @@ common shared
         , generic-lens
         , fast-logger
         , directory
+        , curl
     ghc-options:
         -Wall
         -Wcompat

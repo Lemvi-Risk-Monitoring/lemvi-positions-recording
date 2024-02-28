@@ -16,7 +16,6 @@ The following environment variables can be defined within the GitHub repository 
 - IB_FLEX_QUERY_ID
 - IB_FLEX_REPORT_TOKEN
 - IB_PGP_PASS_KEY
-- IB_PGP_PRIVATE_KEY
 
 ### Basic setup
 
@@ -95,6 +94,12 @@ curl -X POST -H "Content-Type: application/json" -d '{"currencies":["BTC", "ETH"
 
 
 sudo tcpdump -A -r /tmp/http.log tcp port 80
+```
+
+Straight scripts:
+
+```shell
+IBROKERS_BUCKET_POSITIONS=pos IB_FTP_SERVER=ftp2.interactivebrokers.com IB_PGP_PRIVATE_KEY_PATH=dummy cabal run ibrokers-ftp-local
 ```
 
 ### Unit testing

@@ -9,47 +9,30 @@ module IBrokersMoveFTP (
     MoveFTPResponse
 ) where
 
-import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
 
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy.Char8 as BSC
 
-import Text.XML.Light
-    ( unqual,
-      findElements,
-      Attr(Attr),
-      Element(elAttribs),
-      QName(qName), parseXMLDoc, strContent, findElement, findAttr )
 
-import Data.Map.Strict (fromList)
-import Data.Aeson.Text (encodeToLazyText)
-import qualified Data.Text.Lazy as LT
 import qualified Data.Text as T
-import Control.Exception (throw, Exception)
-import Data.Data (Typeable)
-import Network.HTTP.Conduit ( responseTimeoutMicro )
 import GHC.Generics (Generic)
 import qualified Data.Aeson as A
-import Data.Aeson.Types (parseMaybe)
 import System.Environment (lookupEnv)
-import Data.Maybe (fromMaybe)
+import qualified Network.Curl.Easy as NCE
 import qualified System.Log.FastLogger as LOG
 
-import qualified PostSQS
 import qualified Helper
-import qualified AWSEvent (RecordSet(..), Record(..))
+import qualified Network.Curl as NC
+import qualified Data.IORef as IOR
 
 
-data MoveFTPResult = MoveFTPResult { message :: T.Text } deriving Generic
+data MoveFTPResult = MoveFTPResult { message :: T.Text } deriving (Generic, Show)
 instance A.ToJSON MoveFTPResult
+instance A.FromJSON MoveFTPResult
 
 data MoveFTPResponse = MoveFTPResponse MoveFTPResult | MoveFTPError T.Text
-  deriving Generic
+  deriving (Generic, Show)
 instance A.ToJSON MoveFTPResponse
-
-data ReportFetchResponse = ReportFetchResponse T.Text | ReportFetchError T.Text
-  deriving Generic
-instance A.ToJSON ReportFetchResponse
+instance A.FromJSON MoveFTPResponse
 
 data ConfigMoveFTP = ConfigMoveFTP {
     ibPGPPrivateKeyPath :: String,
@@ -58,14 +41,7 @@ data ConfigMoveFTP = ConfigMoveFTP {
     ibFTPUsername :: String,
     ibFTPPassword :: String,
     ibPositionsBucket :: String
-}
-
-        --       "IB_PGP_PRIVATE_KEY_PATH": "${aws_s3_bucket.lambda_resources_bucket.bucket}/private-ibrokers-reporting.pgp",
-        --   "IB_PGP_PASS_KEY": var.ib_pgp_pass_key,
-        --   "IB_FTP_SERVER": var.ib_ftp_server,
-        --   "IB_FTP_USERNAME": var.ib_ftp_username,
-        --   "IB_FTP_PASSWORD": var.ib_ftp_password,
-        --   "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
+} deriving (Show)
 
 getMoveFTPConfig :: IO (Maybe ConfigMoveFTP)
 getMoveFTPConfig = do
@@ -77,7 +53,7 @@ getMoveFTPConfig = do
     maybeBucket <- lookupEnv "IBROKERS_BUCKET_POSITIONS"
     case (maybePpkp, maybePpk, maybeFTPSrv, maybeFTPUser, maybeFTPPwd, maybeBucket) of
         (Just ppkp, Just ppk, Just ftpSrv, Just ftpUser, Just ftpPwd, Just bucket) ->  return $ Just ConfigMoveFTP {
-                ibPGPPrivateKeyPath = ppkp, 
+                ibPGPPrivateKeyPath = ppkp,
                 ibPGPPassKey = ppk,
                 ibFTPServerName  = ftpSrv,
                 ibFTPUsername = ftpUser,
@@ -90,10 +66,54 @@ handleMoveFTP :: A.Value -> IO MoveFTPResponse
 handleMoveFTP requestMoveFTP = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
     config <- getMoveFTPConfig
+    logMessage loggerSet $ "using config: " <> T.pack (show config)
     case config of
-        Just cfg -> return $ MoveFTPError "required env variables: IB_FLEX_REPORT_TOKEN, IBROKERS_BUCKET_POSITIONS"
-        _ -> return $ MoveFTPError "required env variables: IB_FLEX_REPORT_TOKEN, IBROKERS_BUCKET_POSITIONS"
+        Just cfg -> do
+            curl <- NCE.initialize
+            dirListRef <- IOR.newIORef []
+            _ <- NCE.setopt curl (NC.CurlURL ("ftp://" <> ibFTPServerName cfg))
+            _ <- NCE.setopt curl (NC.CurlPort 21)
+            _ <- NCE.setopt curl (NC.CurlUserPwd (ibFTPUsername cfg <> ":" <> ibFTPPassword cfg))
+            _ <- NCE.setopt curl (NC.CurlVerbose True)
+            _ <- NCE.setopt curl (NC.CurlCustomRequest "LIST outgoing")
+            _ <- NCE.setopt curl (NC.CurlWriteFunction (NC.gatherOutput dirListRef))
+            result <- NCE.perform curl
+            case result of
+                NC.CurlOK -> do
+                    response <- IOR.readIORef dirListRef
+                    --NCE.reset curl
+                    let
+                        extractFileNames :: String -> [String]
+                        extractFileNames = map (last . words) . lines
+                        fileList = extractFileNames (head response)
 
+                    mapM_ (retrieveFile curl (T.pack (ibPositionsBucket cfg))) (filter endsWithSixNumbers fileList)
+                    return $ MoveFTPResponse MoveFTPResult {message = T.pack (head response)}
+                _ -> return $ MoveFTPError $ "failed to retrieve files from FTP server: " <> T.pack (show result)
+
+        _ -> return $ MoveFTPError $ "unable to parse config: " <> T.pack (show config)
+
+retrieveFile :: NC.Curl -> T.Text -> String -> IO ()
+retrieveFile curl bucket fileName = do
+    loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
+    logMessage loggerSet $ "processing file " <> T.pack fileName
+    fileContentRef <- IOR.newIORef []
+    _ <- NCE.setopt curl (NC.CurlCustomRequest ("RETR outgoing/" <> fileName))
+    _ <- NCE.setopt curl (NC.CurlWriteFunction (NC.gatherOutput fileContentRef))
+    result <- NCE.perform curl
+    content <- IOR.readIORef fileContentRef
+    let
+        targetDate = (reverse . take 16 . drop 8 . reverse) fileName
+        targetYear = take 4 targetDate
+        targetMonth = (take 6 . drop 4) targetDate
+        targetObjectName = "encrypted/" <> targetYear <> "/" <> targetMonth <> "/" <> fileName
+    Helper.writeToS3 bucket (T.pack targetObjectName) (BS.pack (head content)) "application/octet-stream"
+
+endsWithSixNumbers :: String -> Bool
+endsWithSixNumbers fileName =
+    case reverse fileName of
+        ('p':'g':'p':'.':rest) | length rest >= 6 && all (`elem` ['0'..'9']) (take 6 rest) -> True
+        _ -> False
 
 logMessage :: LOG.LoggerSet -> T.Text -> IO ()
 logMessage loggerSet msg = do

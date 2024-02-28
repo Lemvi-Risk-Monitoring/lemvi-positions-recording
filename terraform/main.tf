@@ -68,7 +68,7 @@ locals {
         exe_path = local.exe_path_ibrokers_ftp_app
         timeout = 60
         description = <<-EOT
-          Retrieving IBrokers report.
+          Retrieving IBrokers report using FTP
           EOT
         environment_variables = {
           "IB_PGP_PRIVATE_KEY_PATH": "${aws_s3_bucket.lambda_resources_bucket.bucket}/private-ibrokers-reporting.pgp",

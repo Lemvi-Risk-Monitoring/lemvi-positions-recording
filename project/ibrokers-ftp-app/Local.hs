@@ -28,5 +28,5 @@ app = do
 
 main :: IO ()
 main = do
-  putStrLn "starting server listening on 8080..."
-  Warp.run 8080 app 
+  result <- IBrokersMoveFTP.handleMoveFTP (A.Null :: A.Value)
+  print result

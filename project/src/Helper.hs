@@ -41,9 +41,9 @@ formatDate :: String -> (Integer, Int, Int) -> String
 formatDate sep (year, month, day) = show year ++ sep ++ printf "%02d" month ++ sep ++ printf "%02d" day
 
 writeToS3 :: T.Text -> T.Text -> BSC.ByteString -> T.Text -> IO ()
-writeToS3 bucket filename json objectType = do
+writeToS3 bucket filename content objectType = do
   env <- AWS.newEnv AWS.discover
   let
-    request = S3.newPutObject (S3.BucketName bucket) (S3.ObjectKey filename) (AWS.toBody json) CL.& putObject_contentType CL.?~ objectType
+    request = S3.newPutObject (S3.BucketName bucket) (S3.ObjectKey filename) (AWS.toBody content) CL.& putObject_contentType CL.?~ objectType
   _ <- AWS.runResourceT $ AWS.send env request
   return ()

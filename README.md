@@ -99,7 +99,7 @@ sudo tcpdump -A -r /tmp/http.log tcp port 80
 Straight scripts:
 
 ```shell
-IBROKERS_BUCKET_POSITIONS=pos IB_FTP_SERVER=ftp2.interactivebrokers.com IB_PGP_PRIVATE_KEY_PATH=dummy cabal run ibrokers-ftp-local
+IBROKERS_BUCKET_POSITIONS=test-ibrokers-positions-857848589999 IB_FTP_SERVER=ftp2.interactivebrokers.com IB_PGP_PRIVATE_KEY_PATH=dummy cabal run ibrokers-ftp-local
 ```
 
 ### Unit testing

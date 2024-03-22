@@ -1,17 +1,10 @@
-variable "lambda_function_arn" {
-  type = string
-}
-
-variable "lambda_function_role_name" {
-  type = string
-}
-
-variable "target_queue_arns" {
-  type = map(string)
-}
-
-variable "target_queue_urls" {
-  type = map(string)
+variable "target_queues" {
+  type = map(object({
+    queue_url = string
+    queue_arn = string
+    function_role_name = string
+    function_arn = string
+  }))
 }
 
 variable "aws_stage" {

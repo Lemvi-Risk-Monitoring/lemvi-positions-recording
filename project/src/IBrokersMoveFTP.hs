@@ -13,6 +13,7 @@ import qualified Data.ByteString.Char8 as BS
 
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import GHC.Generics (Generic)
 import qualified Data.Aeson as A
 import System.Environment (lookupEnv)
@@ -23,7 +24,10 @@ import qualified Helper
 import qualified Network.Curl as NC
 import qualified Data.IORef as IOR
 import qualified Data.List as L
+import qualified PostSQS
 
+import Data.Aeson.Text (encodeToLazyText)
+import qualified Data.Text.Lazy as LT
 
 data MoveFTPResult = MoveFTPResult { message :: T.Text } deriving (Generic, Show)
 instance A.ToJSON MoveFTPResult
@@ -40,7 +44,8 @@ data ConfigMoveFTP = ConfigMoveFTP {
     ibFTPServerName :: String,
     ibFTPUsername :: String,
     ibFTPPassword :: String,
-    ibPositionsBucket :: String
+    ibPositionsBucket :: String,
+    decryptionQueue :: String
 } deriving (Show)
 
 getMoveFTPConfig :: IO (Maybe ConfigMoveFTP)
@@ -51,14 +56,16 @@ getMoveFTPConfig = do
     maybeFTPUser <- lookupEnv "IB_FTP_USERNAME"
     maybeFTPPwd <- lookupEnv "IB_FTP_PASSWORD"
     maybeBucket <- lookupEnv "IBROKERS_BUCKET_POSITIONS"
-    case (maybePpkp, maybePpk, maybeFTPSrv, maybeFTPUser, maybeFTPPwd, maybeBucket) of
-        (Just ppkp, Just ppk, Just ftpSrv, Just ftpUser, Just ftpPwd, Just bucket) ->  return $ Just ConfigMoveFTP {
+    maybeDecryptionQueue <- lookupEnv "DECRYPTION_QUEUE_URL"
+    case (maybePpkp, maybePpk, maybeFTPSrv, maybeFTPUser, maybeFTPPwd, maybeBucket, maybeDecryptionQueue) of
+        (Just ppkp, Just ppk, Just ftpSrv, Just ftpUser, Just ftpPwd, Just bucket, Just decryptQ) ->  return $ Just ConfigMoveFTP {
                 ibPGPPrivateKeyPath = ppkp,
                 ibPGPPassKey = ppk,
                 ibFTPServerName  = ftpSrv,
                 ibFTPUsername = ftpUser,
                 ibFTPPassword = ftpPwd,
-                ibPositionsBucket = bucket
+                ibPositionsBucket = bucket,
+                decryptionQueue = decryptQ
             }
         _ -> return Nothing
 
@@ -86,16 +93,37 @@ handleMoveFTP _ = do
                         extractFileNames = map (last . words) . lines
                         fileList = (L.sort . extractFileNames . head) response
 
-                    mapM_ (retrieveFile curl (T.pack (ibPositionsBucket cfg))) (filter endsWithSixNumbers fileList)
+                    mapM_ (retrieveFile curl cfg) (filter endsWithSixNumbers fileList)
                     return $ MoveFTPResponse MoveFTPResult {message = T.pack (head response)}
                 _ -> return $ MoveFTPError $ "failed to retrieve files from FTP server: " <> T.pack (show result)
 
         _ -> return $ MoveFTPError $ "unable to parse config: " <> T.pack (show config)
 
-retrieveFile :: NC.Curl -> T.Text -> String -> IO ()
-retrieveFile curl bucket fileName = do
+data DecryptionRequest = DecryptionRequest {
+    objectPath :: T.Text,
+    bucketName :: T.Text,
+    pgpKey :: T.Text,
+    pgpPassKey :: T.Text,
+    decryptedObjectPath :: T.Text
+} deriving (Show, Generic)
+instance A.ToJSON DecryptionRequest
+instance A.FromJSON DecryptionRequest
+
+retrieveFile :: NC.Curl -> ConfigMoveFTP -> String -> IO ()
+retrieveFile curl config fileName = do
+
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
     logMessage loggerSet $ "retrieving file " <> T.pack fileName
+
+    let
+        bucket = T.pack (ibPositionsBucket config)
+        privateKeyPath = T.pack (ibPGPPrivateKeyPath config)
+        ppk = T.pack (ibPGPPrivateKeyPath config)
+        queueURL = T.pack (decryptionQueue config)
+        (resourceBucket, pgpKeyObject) = case T.splitOn "/" privateKeyPath of
+            [item1, item2] -> (item1, item2)
+            _ -> error $ "failed to parse encryption key " <> T.unpack privateKeyPath
+
     fileContentRef <- IOR.newIORef []
     _ <- NCE.setopt curl (NC.CurlCustomRequest ("RETR " <> "/outgoing/" <> fileName))
     _ <- NCE.setopt curl (NC.CurlWriteFunction (NC.gatherOutput fileContentRef))
@@ -107,10 +135,14 @@ retrieveFile curl bucket fileName = do
                 targetDate = (reverse . take 8 . drop 8 . reverse) fileName
                 targetYear = take 4 targetDate
                 targetMonth = (take 2 . drop 4) targetDate
-                targetObjectName = "encrypted/" <> targetYear <> "/" <> targetMonth <> "/" <> fileName
-            logMessage loggerSet $ "storing file as s3:" <> bucket <> "/" <> T.pack targetObjectName
-            Helper.writeToS3 bucket (T.pack targetObjectName) (BS.pack (head content)) "application/octet-stream"
+                targetObjectPath =  T.pack $ targetYear <> "/" <> targetMonth <> "/" <> fileName
+                targetObjectName = T.pack "encrypted/" <> targetObjectPath
+            logMessage loggerSet $ "storing file as s3:" <> bucket <> "/" <> targetObjectName
+            Helper.writeToS3 bucket targetObjectName (BS.pack (head content)) "application/octet-stream"
             Helper.writeToS3 bucket (T.pack "encrypted/latest.gpg") (BS.pack (head content)) "application/octet-stream"
+            pgpk <- Helper.loadContentFromS3 resourceBucket pgpKeyObject
+            let decryptionRequest = DecryptionRequest { objectPath=targetObjectName, bucketName=bucket, pgpKey=TE.decodeUtf8 pgpk, pgpPassKey=ppk, decryptedObjectPath=targetObjectPath }
+            PostSQS.sendMessageQueueURL queueURL ((LT.toStrict . encodeToLazyText) decryptionRequest)
             _ <- NCE.setopt curl (NC.CurlCustomRequest ("DELE " <> "/outgoing/" <> fileName))
             deleteResult <- NCE.perform curl
             case deleteResult of
@@ -121,7 +153,7 @@ retrieveFile curl bucket fileName = do
 endsWithSixNumbers :: String -> Bool
 endsWithSixNumbers fileName =
     case reverse fileName of
-        ('p':'g':'p':'.':'l':'m':'x':'.':rest) | length rest >= 8 && all (`elem` ['0'..'9']) (take 8 rest) -> True 
+        ('p':'g':'p':'.':'l':'m':'x':'.':rest) | length rest >= 8 && all (`elem` ['0'..'9']) (take 8 rest) -> True
         _ -> False
 
 logMessage :: LOG.LoggerSet -> T.Text -> IO ()

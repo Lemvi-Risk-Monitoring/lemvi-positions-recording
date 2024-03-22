@@ -25,6 +25,7 @@ common shared
     build-depends: base >=4.7
         , aeson
         , bytestring
+        , conduit-extra
         , containers
         , hal
         , http-client
@@ -71,6 +72,7 @@ library
         , PostSQS
         , AWSEvent
         , IBrokersMoveFTP
+        , GPGDecrypt
 
     hs-source-dirs:   project/src
     default-language: Haskell2010
@@ -132,6 +134,21 @@ executable ibrokers-ftp-local
     import:           shared
     main-is:          Local.hs
     hs-source-dirs:   project/ibrokers-ftp-app
+    default-language: Haskell2010
+    build-depends: lemvi-positions-recording
+
+executable decryption-app
+    import:           shared
+    main-is:          Main.hs
+    hs-source-dirs:   project/decryption-app
+    default-language: Haskell2010
+    build-depends: lemvi-positions-recording
+        , wai-handler-hal >= 0.4.0 && < 0.5
+
+executable decryption-local
+    import:           shared
+    main-is:          Local.hs
+    hs-source-dirs:   project/decryption-app
     default-language: Haskell2010
     build-depends: lemvi-positions-recording
 

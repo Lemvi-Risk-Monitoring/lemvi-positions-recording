@@ -110,6 +110,7 @@ retrieveFile curl bucket fileName = do
                 targetObjectName = "encrypted/" <> targetYear <> "/" <> targetMonth <> "/" <> fileName
             logMessage loggerSet $ "storing file as s3:" <> bucket <> "/" <> T.pack targetObjectName
             Helper.writeToS3 bucket (T.pack targetObjectName) (BS.pack (head content)) "application/octet-stream"
+            Helper.writeToS3 bucket (T.pack "encrypted/latest.gpg") (BS.pack (head content)) "application/octet-stream"
             _ <- NCE.setopt curl (NC.CurlCustomRequest ("DELE " <> "/outgoing/" <> fileName))
             deleteResult <- NCE.perform curl
             case deleteResult of

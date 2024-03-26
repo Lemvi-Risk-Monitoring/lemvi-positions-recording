@@ -25,6 +25,7 @@ import qualified Network.Curl as NC
 import qualified Data.IORef as IOR
 import qualified Data.List as L
 import qualified PostSQS
+import GPGDecrypt ( DecryptionRequest(..) )
 
 import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.Text.Lazy as LT
@@ -98,16 +99,6 @@ handleMoveFTP _ = do
                 _ -> return $ MoveFTPError $ "failed to retrieve files from FTP server: " <> T.pack (show result)
 
         _ -> return $ MoveFTPError $ "unable to parse config: " <> T.pack (show config)
-
-data DecryptionRequest = DecryptionRequest {
-    objectPath :: T.Text,
-    bucketName :: T.Text,
-    pgpKey :: T.Text,
-    pgpPassKey :: T.Text,
-    decryptedObjectPath :: T.Text
-} deriving (Show, Generic)
-instance A.ToJSON DecryptionRequest
-instance A.FromJSON DecryptionRequest
 
 retrieveFile :: NC.Curl -> ConfigMoveFTP -> String -> IO ()
 retrieveFile curl config fileName = do

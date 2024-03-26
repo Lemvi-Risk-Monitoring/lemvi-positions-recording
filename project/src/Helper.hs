@@ -17,6 +17,8 @@ import qualified Amazonka as AWS
 import qualified Amazonka.S3 as S3
 import qualified Control.Lens as CL
 import qualified Data.Conduit.Binary as CB
+import qualified Control.Monad.Trans.Resource as MTR
+import Control.Monad.Trans.Resource (ResourceT)
 
 toCamel :: String -> String
 toCamel "" = ""
@@ -50,16 +52,24 @@ writeToS3 bucket filename content objectType = do
   _ <- AWS.runResourceT $ AWS.send env request
   return ()
 
-loadFromS3 :: T.Text -> T.Text -> IO S3.GetObjectResponse
+loadFromS3 :: T.Text -> T.Text -> ResourceT IO S3.GetObjectResponse
 loadFromS3 bucket filename = do
   env <- AWS.newEnv AWS.discover
   let
     request = S3.newGetObject (S3.BucketName bucket) (S3.ObjectKey filename)
-  AWS.runResourceT $ AWS.send env request
+  AWS.send env request
+
+loadContentFromS3'' :: T.Text -> T.Text -> IO BSC.ByteString
+loadContentFromS3'' bucket filename = do
+  response <- MTR.runResourceT $ loadFromS3 bucket filename
+  let body = CL.view getObjectResponse_body response :: AWS.ResponseBody
+  content <- MTR.runResourceT $ AWS.sinkBody body CB.sinkLbs
+  return $ BSC.toStrict content
 
 loadContentFromS3 :: T.Text -> T.Text -> IO BSC.ByteString
-loadContentFromS3 bucket filename = do
+loadContentFromS3 bucket filename = MTR.runResourceT $ do
   response <- loadFromS3 bucket filename
-  let body = CL.view getObjectResponse_body response :: AWS.ResponseBody
-  content <- AWS.runResourceT $ AWS.sinkBody body CB.sinkLbs
+  let
+    body = CL.view getObjectResponse_body response :: AWS.ResponseBody
+  content <- AWS.sinkBody body CB.sinkLbs
   return $ BSC.toStrict content

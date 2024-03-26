@@ -28,6 +28,7 @@ common shared
         , conduit-extra
         , containers
         , hal
+        , h-gpgme
         , http-client
         , http-conduit
         , servant

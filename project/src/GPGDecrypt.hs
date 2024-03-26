@@ -5,158 +5,69 @@
 {-# LANGUAGE DataKinds #-}
 
 module GPGDecrypt (
-    handleDecrypt
+    handleDecrypt, DecryptionRequest(..)
 ) where
 
-import Network.HTTP.Simple ( parseRequest, getResponseBody, httpBS, setRequestResponseTimeout )
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy.Char8 as BSC
-
-import Text.XML.Light
-    ( unqual,
-      findElements,
-      Attr(Attr),
-      Element(elAttribs),
-      QName(qName), parseXMLDoc, strContent, findElement, findAttr )
-
-import Data.Map.Strict (fromList)
-import Data.Aeson.Text (encodeToLazyText)
-import qualified Data.Text.Lazy as LT
 import qualified Data.Text as T
-import Control.Exception (throw, Exception)
-import Data.Data (Typeable)
-import Network.HTTP.Conduit ( responseTimeoutMicro )
 import GHC.Generics (Generic)
 import qualified Data.Aeson as A
-import Data.Aeson.Types (parseMaybe)
-import System.Environment (lookupEnv)
-import Data.Maybe (fromMaybe)
+import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified System.Log.FastLogger as LOG
 
-import qualified PostSQS
+import qualified AWSEvent (RecordSet(..), Record(..))
 import qualified Helper
+import Control.Monad.IO.Class (liftIO)
 
-data ReportRequestResult = ReportRequestResult { referenceCode :: String, callbackURL :: String, countRetries :: Int }
-  deriving (Show, Generic)
-instance A.ToJSON ReportRequestResult
-instance A.FromJSON ReportRequestResult
+data DecryptionResponse = DecryptionResponse T.Text | DecryptionError T.Text
+    deriving (Show, Generic)
+instance A.ToJSON DecryptionResponse
 
-data CallbackBody = Record
-    { contents      :: ReportRequestResult
+data DecryptionRequest = DecryptionRequest {
+    objectPath :: T.Text,
+    bucketName :: T.Text,
+    pgpKey :: T.Text,
+    pgpPassKey :: T.Text,
+    decryptedObjectPath :: T.Text
+} deriving (Show, Generic)
+instance A.ToJSON DecryptionRequest
+instance A.FromJSON DecryptionRequest
+
+data PostEnvelop = Record
+    { contents      :: DecryptionRequest
     , tag           :: T.Text
     } deriving (Show, Generic)
 
-instance A.FromJSON CallbackBody
-instance A.ToJSON CallbackBody
+instance A.FromJSON PostEnvelop
+instance A.ToJSON PostEnvelop
 
-data ReportRequestResponse = ReportRequestResponse ReportRequestResult | ReportRequestError String
-  deriving Generic
-instance A.ToJSON ReportRequestResponse
+processRecord :: AWSEvent.Record -> IO DecryptionResponse
+processRecord record = case (A.eitherDecode ((BSC.pack . T.unpack) (AWSEvent.body record)) :: Either String PostEnvelop) of
+    Left msg -> return $ DecryptionError $ "failed to parse record: " <> T.pack msg
+    Right body -> do
+        loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
+        let
+            sourcePath = objectPath (contents body)
+            bucket = bucketName (contents body)
+            pKey = pgpKey (contents body)
+            ppKey = pgpPassKey (contents body)
+            targetPath = decryptedObjectPath (contents body)
+        logMessage loggerSet $ T.pack "loading encrypted object: " <> T.pack (show sourcePath) <> " in bucket " <> T.pack (show bucket) 
+        encrypted <- Helper.loadContentFromS3 bucket sourcePath
 
-data ReportFetchResponse = ReportFetchResponse T.Text | ReportFetchError T.Text
-    deriving (Show, Generic)
-instance A.ToJSON ReportFetchResponse
+        logMessage loggerSet $ T.pack "saving decrypted object: " <> T.pack (show targetPath)
+        Helper.writeToS3 bucket targetPath encrypted "application/octet-stream"
+        logMessage loggerSet $ T.pack "not yet implemented: " <> T.pack (show body)
+        return $ DecryptionError $ "not yet implemented: " <> T.pack (show body)
 
-
-createRequestIBFlexReport :: String -> String -> String -> IO ReportRequestResponse
-createRequestIBFlexReport ibFlexURL ibQueryId ibToken = do
-    let ibFlexURL' = ibFlexURL <> "?t=" <> ibToken <> "&q=" <> ibQueryId <> "&v=3"
-    request <- parseRequest ibFlexURL'
-    let request' = setRequestResponseTimeout (responseTimeoutMicro 120000000) request
-    ibResponse <- httpBS request'
-
-    let
-        response = BS.unpack (getResponseBody ibResponse)
-        ibReportLocation = parseXMLDoc response
-        ibReportReferenceCode = findReferenceCode ibReportLocation
-        ibReportBaseUrl = findURL ibReportLocation
-    case (ibReportReferenceCode, ibReportBaseUrl) of
-        (Just refCode, Just url) -> do
-            return $ ReportRequestResponse $ ReportRequestResult { referenceCode = refCode, callbackURL = url, countRetries = 5 }
-        _ -> return $ ReportRequestError ("failed to call " <> ibFlexURL' <> ", unable to parse response: " <> response)
-
-
-loadIBFlexReport :: String -> String -> String -> IO String
-loadIBFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
-    let ibReportURL  = ibReportBaseUrl <> "?t=" <> ibToken <> "&q=" <> ibReportReferenceCode <> "&v=3"
+handleDecrypt :: A.Value -> IO [DecryptionResponse]
+handleDecrypt sqsEvent = do
     loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
-    logMessage loggerSet $ "loading report using url " <> T.pack ibReportURL
-    reportRequest <- parseRequest ibReportURL
-    ibReport <- httpBS reportRequest
-    return $ BS.unpack (getResponseBody ibReport)
-
-
-loadIBRecords :: String -> String -> String -> IO (Maybe Element)
-loadIBRecords ibReportBaseUrl ibToken ibReportReferenceCode = do
-    report <- loadIBFlexReport ibReportBaseUrl ibToken ibReportReferenceCode
-    return $ parseXMLDoc report
-
-findReferenceCode :: Maybe Element -> Maybe String
-findReferenceCode (Just tree) = strContent <$> findElement (unqual "ReferenceCode") tree
-findReferenceCode _ = Nothing
-
-findURL :: Maybe Element -> Maybe String
-findURL (Just tree) = strContent <$> findElement (unqual "Url") tree
-findURL _ = Nothing
-
-type ErrorCode = Int
-type ErrorMessage = String
-
-findErrorCode :: Element -> Maybe ErrorCode
-findErrorCode tree = read . strContent <$> findElement (unqual "ErrorCode") tree
-
-findErrorMessage :: Element -> Maybe ErrorMessage
-findErrorMessage tree = strContent <$> findElement (unqual "ErrorMessage") tree
-
-checkReportError :: Element -> Maybe (ErrorCode, ErrorMessage)
-checkReportError tree = case (findErrorCode tree, findErrorMessage tree) of
-    (Just errorCode, Just errorMessage) -> Just (errorCode, errorMessage)
-    _ -> Nothing
-
-makeIBRecords :: Element -> LT.Text
-makeIBRecords reportTree = encodeToLazyText [fromList (attrToPair a) | a <- findElements (unqual "OpenPosition") reportTree]
-   where
-       attrToPair e = [(qName n, v) | Attr n v <- elAttribs e]
-
-data IBrokersException
-  = LoadingFailed !LT.Text
-  | ReportServerError !LT.Text
-  | EnvironmentVariableMissing !LT.Text
-  deriving (Show, Typeable)
-
-instance Exception IBrokersException
-
-fetchFlexReport :: String -> String -> String -> IO Element
-fetchFlexReport ibReportBaseUrl ibToken ibReportReferenceCode = do
-    maybeTree <- loadIBRecords ibReportBaseUrl ibToken ibReportReferenceCode
-    case maybeTree of
-        Just tree -> case checkReportError tree of
-            Just (errorCode, errorMessage) -> throw (ReportServerError (LT.pack msg))
-                where msg = "report not ready: " <> errorMessage <> " (code " <> show errorCode <> ")"
-            Nothing -> return tree
-        Nothing -> throw $ LoadingFailed "failed to load data"
-
-data FlexReportEvent where
-  FlexReportEvent :: {flexQueryId :: String} -> FlexReportEvent
-  deriving Generic
-instance A.FromJSON FlexReportEvent
-
-findReportDate :: Element -> Maybe T.Text
-findReportDate xml = do
-    xmlElem <- findElement (unqual "FlexStatement") xml
-    attr <- findAttr (unqual "toDate") xmlElem
-    return $ T.pack attr
-
-handleDecrypt :: A.Value -> IO ReportFetchResponse
-handleDecrypt flexReportReference = do
-    loggerSet <- LOG.newStderrLoggerSet LOG.defaultBufSize
-    logMessage loggerSet $ T.pack "failed to parse input event: " <> T.pack (show flexReportReference)
-    return $ ReportFetchError $ "failed to parse input event" <> T.pack (show flexReportReference)
-
-toDatePath :: T.Text -> T.Text
-toDatePath dateText = year <> "/" <> month
-    where
-        (year, month) = T.splitAt 4 (T.take 6 dateText)
+    logMessage loggerSet $ T.pack "processing event: " <> T.pack (show sqsEvent)
+    case A.decode (A.encode sqsEvent) :: Maybe AWSEvent.RecordSet of
+        Just (AWSEvent.RecordSet records) -> mapM processRecord records
+        Nothing -> do
+            logMessage loggerSet $ T.pack "failed to parse input event: " <> T.pack (show sqsEvent)
+            return [DecryptionError $ "failed to parse input event" <> T.pack (show sqsEvent)]
 
 logMessage :: LOG.LoggerSet -> T.Text -> IO ()
 logMessage loggerSet msg = do

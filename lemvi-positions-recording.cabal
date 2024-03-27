@@ -24,11 +24,13 @@ extra-doc-files:    CHANGELOG.md
 common shared
     build-depends: base >=4.7
         , aeson
+        , base-compat
         , bytestring
         , conduit-extra
         , containers
+        , exceptions
         , hal
-        , h-gpgme
+        , hOpenPGP
         , http-client
         , http-conduit
         , servant
@@ -48,6 +50,7 @@ common shared
         , fast-logger
         , directory
         , curl
+        , transformers
     ghc-options:
         -Wall
         -Wcompat

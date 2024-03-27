@@ -11,12 +11,15 @@ module GPGDecrypt (
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import qualified Data.Aeson as A
-import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified System.Log.FastLogger as LOG
+import Data.Conduit.OpenPGP.Decrypt
 
 import qualified AWSEvent (RecordSet(..), Record(..))
 import qualified Helper
-import Control.Monad.IO.Class (liftIO)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy.Char8 as BSC
+import Codec.Encryption.OpenPGP.CFB (decrypt, decryptOpenPGPCfb)
+import Codec.Encryption.OpenPGP.Types (SymmetricAlgorithm)
 
 data DecryptionResponse = DecryptionResponse T.Text | DecryptionError T.Text
     deriving (Show, Generic)
@@ -36,9 +39,12 @@ data PostEnvelop = Record
     { contents      :: DecryptionRequest
     , tag           :: T.Text
     } deriving (Show, Generic)
-
 instance A.FromJSON PostEnvelop
 instance A.ToJSON PostEnvelop
+
+-- TODO Implement properly
+decryptContent :: SymmetricAlgorithm -> BS.ByteString -> BS.ByteString -> Either String BS.ByteString
+decryptContent passphrase secretKey encryptedData = decryptOpenPGPCfb passphrase secretKey encryptedData
 
 processRecord :: AWSEvent.Record -> IO DecryptionResponse
 processRecord record = case (A.eitherDecode ((BSC.pack . T.unpack) (AWSEvent.body record)) :: Either String PostEnvelop) of
@@ -53,11 +59,17 @@ processRecord record = case (A.eitherDecode ((BSC.pack . T.unpack) (AWSEvent.bod
             targetPath = decryptedObjectPath (contents body)
         logMessage loggerSet $ T.pack "loading encrypted object: " <> T.pack (show sourcePath) <> " in bucket " <> T.pack (show bucket) 
         encrypted <- Helper.loadContentFromS3 bucket sourcePath
-
-        logMessage loggerSet $ T.pack "saving decrypted object: " <> T.pack (show targetPath)
-        Helper.writeToS3 bucket targetPath encrypted "application/octet-stream"
-        logMessage loggerSet $ T.pack "not yet implemented: " <> T.pack (show body)
-        return $ DecryptionError $ "not yet implemented: " <> T.pack (show body)
+         -- TODO decrypt
+        let decrypted = Right encrypted
+        case decrypted of
+            Left decryptError -> do
+                logMessage loggerSet $ T.pack "failed to decrypt: " <> T.pack (show (decryptError :: String))
+                return $ DecryptionError $ "failed to decrypt: " <> T.pack (show decryptError)
+            Right plain -> do
+                logMessage loggerSet $ T.pack "saving decrypted object: " <> T.pack (show targetPath)
+                Helper.writeToS3 bucket targetPath plain "application/octet-stream"
+                logMessage loggerSet $ T.pack "not yet implemented: " <> T.pack (show body)
+                return $ DecryptionError $ "not yet implemented: " <> T.pack (show body)
 
 handleDecrypt :: A.Value -> IO [DecryptionResponse]
 handleDecrypt sqsEvent = do

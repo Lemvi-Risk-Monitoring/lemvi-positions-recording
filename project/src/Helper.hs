@@ -59,13 +59,6 @@ loadFromS3 bucket filename = do
     request = S3.newGetObject (S3.BucketName bucket) (S3.ObjectKey filename)
   AWS.send env request
 
-loadContentFromS3'' :: T.Text -> T.Text -> IO BSC.ByteString
-loadContentFromS3'' bucket filename = do
-  response <- MTR.runResourceT $ loadFromS3 bucket filename
-  let body = CL.view getObjectResponse_body response :: AWS.ResponseBody
-  content <- MTR.runResourceT $ AWS.sinkBody body CB.sinkLbs
-  return $ BSC.toStrict content
-
 loadContentFromS3 :: T.Text -> T.Text -> IO BSC.ByteString
 loadContentFromS3 bucket filename = MTR.runResourceT $ do
   response <- loadFromS3 bucket filename

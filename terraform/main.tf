@@ -16,27 +16,30 @@ locals {
   }
   ws = local.workspaces[terraform.workspace]
 
-  queue_ibrokers_report      = "ibrokers-reporting"
-  project_name_version       = "lemvi-positions-recording-0.1.0.0"
-  ghc_dist_path              = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
-  echo_lambda_dir_name       = "echo-app"
-  ibrokers_request_app_dir_name      = "ibrokers-request-app"
-  ibrokers_fetch_app_dir_name      = "ibrokers-fetch-app"
-  ibrokers_ftp_app_dir_name      = "ibrokers-ftp-app"
-  deribit_app_dir_name       = "deribit-app"
-  dist_path                  = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x/"
-  exe_path_echo_lambda       = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
-  exe_path_ibrokers_request_app      = "${local.dist_path}/${local.ibrokers_request_app_dir_name}/build/${local.ibrokers_request_app_dir_name}/${local.ibrokers_request_app_dir_name}"
-  exe_path_ibrokers_fetch_app      = "${local.dist_path}/${local.ibrokers_fetch_app_dir_name}/build/${local.ibrokers_fetch_app_dir_name}/${local.ibrokers_fetch_app_dir_name}"
-  exe_path_ibrokers_ftp_app      = "${local.dist_path}/${local.ibrokers_ftp_app_dir_name}/build/${local.ibrokers_ftp_app_dir_name}/${local.ibrokers_ftp_app_dir_name}"
-  exe_path_deribit_app       = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
+  queue_ibrokers_report         = "ibrokers-reporting"
+  queue_decryption              = "decryption"
+  project_name_version          = "lemvi-positions-recording-0.1.0.0"
+  ghc_dist_path                 = "dist-newstyle/build/x86_64-linux/ghc-9.4.8"
+  echo_lambda_dir_name          = "echo-app"
+  ibrokers_request_app_dir_name = "ibrokers-request-app"
+  ibrokers_fetch_app_dir_name   = "ibrokers-fetch-app"
+  decryption_app_dir_name       = "decryption-app"
+  ibrokers_ftp_app_dir_name     = "ibrokers-ftp-app"
+  deribit_app_dir_name          = "deribit-app"
+  dist_path                     = "${path.cwd}/${local.ghc_dist_path}/${local.project_name_version}/x"
+  exe_path_echo_lambda          = "${local.dist_path}/${local.echo_lambda_dir_name}/build/${local.echo_lambda_dir_name}/${local.echo_lambda_dir_name}"
+  exe_path_ibrokers_request_app = "${local.dist_path}/${local.ibrokers_request_app_dir_name}/build/${local.ibrokers_request_app_dir_name}/${local.ibrokers_request_app_dir_name}"
+  exe_path_ibrokers_fetch_app   = "${local.dist_path}/${local.ibrokers_fetch_app_dir_name}/build/${local.ibrokers_fetch_app_dir_name}/${local.ibrokers_fetch_app_dir_name}"
+  exe_path_decryption_app       = "${local.dist_path}/${local.decryption_app_dir_name}/build/${local.decryption_app_dir_name}/${local.decryption_app_dir_name}"
+  exe_path_ibrokers_ftp_app     = "${local.dist_path}/${local.ibrokers_ftp_app_dir_name}/build/${local.ibrokers_ftp_app_dir_name}/${local.ibrokers_ftp_app_dir_name}"
+  exe_path_deribit_app          = "${local.dist_path}/${local.deribit_app_dir_name}/build/${local.deribit_app_dir_name}/${local.deribit_app_dir_name}"
 
   lambda_functions = {
       "echo-lambda"       = {
         exe_path = local.exe_path_echo_lambda
         timeout = 60
         description = <<-EOT
-          Testing lambda function.
+          Testing lambda function
           EOT
         environment_variables = {
           }
@@ -45,7 +48,7 @@ locals {
         exe_path = local.exe_path_ibrokers_request_app
         timeout = 60
         description = <<-EOT
-          Requesting IBrokers report.
+          Requesting IBrokers report
           Example test: { "flexQueryId": "906041" }
           EOT
         environment_variables = {
@@ -57,12 +60,21 @@ locals {
         exe_path = local.exe_path_ibrokers_fetch_app
         timeout = 60
         description = <<-EOT
-          Retrieving IBrokers report.
+          Retrieving IBrokers report
           EOT
         environment_variables = {
           "IB_FLEX_REPORT_TOKEN": var.ib_flex_report_token,
           "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
           }
+      },
+      "decryption-lambda"   = { 
+        exe_path = local.exe_path_decryption_app
+        timeout = 60
+        description = <<-EOT
+          GPG Decryption
+          EOT
+        environment_variables = {
+        }
       },
       "ibrokers-ftp-lambda"   = { 
         exe_path = local.exe_path_ibrokers_ftp_app
@@ -76,7 +88,8 @@ locals {
           "IB_FTP_SERVER": var.ib_ftp_server,
           "IB_FTP_USERNAME": var.ib_ftp_username,
           "IB_FTP_PASSWORD": var.ib_ftp_password,
-          "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket
+          "IBROKERS_BUCKET_POSITIONS": aws_s3_bucket.ibrokers_bucket.bucket,
+          "DECRYPTION_QUEUE_URL": aws_sqs_queue.queue_decryption.url
           }
       },
       "deribit-lambda"    =  { 
@@ -148,15 +161,38 @@ resource "aws_lambda_event_source_mapping" "queue_trigger_ibrokers_report" {
   enabled           = true
 }
 
+resource "aws_sqs_queue" "queue_decryption" {
+      name = "${local.ws.aws_stage}-${local.queue_decryption}"
+      visibility_timeout_seconds = 60
+      delay_seconds              = 30
+      message_retention_seconds  = 3600
+}
+
+resource "aws_lambda_event_source_mapping" "queue_trigger_decryption" {
+  batch_size        = 1
+  scaling_config {
+    maximum_concurrency = 2
+  }
+  event_source_arn  = aws_sqs_queue.queue_decryption.arn
+  function_name     = module.lambda_function["decryption-lambda"].arn
+  enabled           = true
+}
+
 module "lambda_posting" {
   source = "./aws-lambda-posting"
-  lambda_function_role_name = module.lambda_function["ibrokers-request-lambda"].lambda_role.name
-  lambda_function_arn = module.lambda_function["ibrokers-request-lambda"].arn
   aws_stage = local.ws.aws_stage
-  target_queue_urls = {
-    (local.queue_ibrokers_report): aws_sqs_queue.queue_ibrokers_report.url
-  }
-  target_queue_arns = {
-    (local.queue_ibrokers_report): aws_sqs_queue.queue_ibrokers_report.arn
+  target_queues = {
+    (local.queue_ibrokers_report): {
+      queue_url = aws_sqs_queue.queue_ibrokers_report.url,
+      queue_arn = aws_sqs_queue.queue_ibrokers_report.arn,
+      function_role_name = module.lambda_function["ibrokers-request-lambda"].lambda_role.name,
+      function_arn = module.lambda_function["ibrokers-request-lambda"].arn
+    },
+    (local.queue_decryption): {
+      queue_url = aws_sqs_queue.queue_decryption.url,
+      queue_arn = aws_sqs_queue.queue_decryption.arn,
+      function_role_name = module.lambda_function["ibrokers-ftp-lambda"].lambda_role.name,
+      function_arn = module.lambda_function["ibrokers-ftp-lambda"].arn
+    }
   }
 }

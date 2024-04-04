@@ -5,9 +5,9 @@ module Main (main) where
 
 import qualified Data.Aeson as A
 
-import qualified IBrokersMoveFTP
+import qualified GPGDecrypt
 
 main :: IO ()
 main = do
-  result <- IBrokersMoveFTP.handleMoveFTP (A.Null :: A.Value)
+  result <- GPGDecrypt.handleDecrypt (A.Null :: A.Value)
   print result

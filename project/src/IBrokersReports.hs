@@ -191,7 +191,7 @@ handleFetch flexReportReference = do
                         Right body -> do
                             let url = callbackURL (contents body)
                             let refCode = referenceCode (contents body)
-                            -- let retries = countRetries (contents body)
+                            let retries = countRetries (contents body)
                             report <- fetchFlexReport url token refCode
                             let
                                 maybeReportDate = findReportDate report
@@ -203,7 +203,11 @@ handleFetch flexReportReference = do
                                     return $ ReportFetchResponse $ T.pack "saved records to " <> outputPath
                                         where
                                             outputPath = toDatePath reportDate <> "/" <> reportDate <> ".json"
-                                Nothing -> return $ ReportFetchError $ "failed to retrieve report date " <> T.pack (show report)
+                                Nothing -> (if retries > 0 then (do
+                                            let
+                                                retry = ReportRequestResponse $ ReportRequestResult { referenceCode = refCode, callbackURL = url, countRetries = retries - 1 }
+                                            PostSQS.sendMessageQueueURL (T.pack url) ((LT.toStrict . encodeToLazyText) retry)
+                                            return $ ReportFetchError $ "retrying (" <> T.pack (show retries) <> " left) for report date " <> T.pack (show report)) else return $ ReportFetchError $ "failed to retrieve report date " <> T.pack (show report))
                 Nothing -> do
                     logMessage loggerSet $ T.pack "failed to parse input event: " <> T.pack (show flexReportReference)
                     return $ ReportFetchError $ "failed to parse input event" <> T.pack (show flexReportReference)
